@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Voicer.AI - AI Voice Agent</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <style>
+  /* === Modern UI Design === */
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+    min-height: 100vh;
+    margin: 0;
+    padding: 2rem;
+    overflow-x: hidden;
+  }
+
+  .container {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    padding: 3rem;
+    max-width: 800px;
+    margin: 2rem auto;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    position: relative;
+  }
+
+  .container::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4, #feca57);
+    border-radius: 26px;
+    z-index: -1;
+    animation: borderGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes borderGlow {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+
+  h1 {
+    color: #ffffff;
+    text-align: center;
+    margin-bottom: 2rem;
+    font-size: 2.5rem;
+    font-weight: 700;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 3rem;
+    font-size: 1.1rem;
+    line-height: 1.6;
+  }
+
+  /* Session Management */
+  .session-info {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+    backdrop-filter: blur(10px);
+  }
+
+  .session-info h3 {
+    color: #ffffff;
+    margin-bottom: 1rem;
+    font-size: 1.3rem;
+    font-weight: 600;
+  }
+
+  .session-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+    gap: 0.5rem;
+  }
+
+  .status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+  }
+
+  .status-active {
+    background: #4ade80;
+    box-shadow: 0 0 20px #4ade80;
+    animation: pulse 2s infinite;
+  }
+
+  .status-inactive {
+    background: #ef4444;
+    box-shadow: 0 0 20px #ef4444;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.7; }
+  }
+
+  .session-id {
+    font-family: 'Monaco', 'Menlo', monospace;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+    word-break: break-all;
+    font-size: 0.9rem;
+    color: #e0e7ff;
+  }
+
+  /* Main Recording Section */
+  .recording-section {
+    text-align: center;
+    margin: 3rem 0;
+  }
+
+  .recording-section h3 {
+    color: #ffffff;
+    margin-bottom: 2rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .description {
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 2rem;
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Voice Selection */
+  .voice-selection {
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+
+  .voice-selection label {
+    display: block;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+  }
+
+  .voice-select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    color: #ffffff;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    min-width: 250px;
+    cursor: pointer;
+  }
+
+  .voice-select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+  }
+
+  .voice-select option {
+    background: #2d3748;
+    color: #ffffff;
+    padding: 0.5rem;
+  }
+
+  /* Recording Button */
+  .record-button-container {
+    position: relative;
+    margin: 2rem 0;
+  }
+
+  .record-button {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    box-shadow: 0 10px 30px rgba(255, 107, 107, 0.4);
+    overflow: hidden;
+  }
+
+  .record-button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+
+  .record-button:hover::before {
+    width: 100%;
+    height: 100%;
+  }
+
+  .record-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 15px 40px rgba(255, 107, 107, 0.6);
+  }
+
+  .record-button:active {
+    transform: scale(0.95);
+  }
+
+  .record-button.recording {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    animation: recordingPulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0 50px rgba(239, 68, 68, 0.8);
+  }
+
+  @keyframes recordingPulse {
+    0%, 100% { 
+      transform: scale(1);
+      box-shadow: 0 0 50px rgba(239, 68, 68, 0.8);
+    }
+    50% { 
+      transform: scale(1.05);
+      box-shadow: 0 0 80px rgba(239, 68, 68, 1);
+    }
+  }
+
+  .record-button:disabled {
+    background: #6b7280;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .record-button:disabled::after {
+    display: none;
+  }
+
+  /* Status Messages */
+  .status-message {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1.5rem 0;
+    text-align: center;
+    color: #ffffff;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+  }
+
+  .status-message.success {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: rgba(34, 197, 94, 0.4);
+  }
+
+  .status-message.error {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  /* Chat History */
+  .chat-history-section {
+    margin-top: 3rem;
+    display: none;
+  }
+
+  .chat-history-section.visible {
+    display: block;
+    animation: fadeInUp 0.5s ease-out;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .chat-history-section h3 {
+    color: #ffffff;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .chat-history {
+    max-height: 400px;
+    overflow-y: auto;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+  }
+
+  .chat-message {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border-radius: 12px;
+    border-left: 4px solid;
+    animation: slideInLeft 0.3s ease-out;
+    transition: all 0.3s ease;
+  }
+
+  .chat-message:hover {
+    transform: translateX(5px);
+  }
+
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .chat-message.user {
+    background: rgba(59, 130, 246, 0.1);
+    border-left-color: #3b82f6;
+  }
+
+  .chat-message.assistant {
+    background: rgba(34, 197, 94, 0.1);
+    border-left-color: #22c55e;
+  }
+
+  .chat-message .role {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .chat-message.user .role {
+    color: #93c5fd;
+  }
+
+  .chat-message.assistant .role {
+    color: #86efac;
+  }
+
+  .chat-message .content {
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  /* Buttons */
+  .btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  }
+
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+  }
+
+  .btn:active {
+    transform: translateY(0);
+  }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.2);
+  }
+
+  /* Hidden Audio Elements */
+  .hidden-audio {
+    display: none !important;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .container {
+      padding: 2rem;
+      margin: 1rem;
+    }
+    
+    h1 {
+      font-size: 2rem;
+    }
+    
+    .record-button {
+      width: 100px;
+      height: 100px;
+    }
+  }
+
+  /* Scrollbar Styling */
+  .chat-history::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .chat-history::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+
+  .chat-history::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+  }
+
+  .chat-history::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Voicer.AI</h1>
+    <p class="subtitle">Your intelligent AI voice companion with memory and context awareness</p>
+    
+    <!-- Session Management -->
+    <div class="session-info">
+      <h3>Chat Session</h3>
+      <div class="session-status">
+        <span class="status-indicator status-inactive"></span>
+        <span id="sessionStatusText">No active session</span>
+      </div>
+      <div id="sessionIdDisplay" style="display: none;">
+        <strong>Session ID:</strong>
+        <div class="session-id" id="sessionIdText"></div>
+        <button class="btn btn-secondary" onclick="createNewSession()" style="margin-top: 0.5rem;">New Session</button>
+      </div>
+      <button id="startSessionBtn" class="btn" onclick="createNewSession()">Start New Chat Session</button>
+    </div>
+
+    <!-- Main Recording Section -->
+    <div class="recording-section">
+      <h3>Voice Conversation</h3>
+      <p class="description">
+        Tap the microphone to start talking. Your AI assistant will remember our conversation 
+        and respond with context awareness. Just speak naturally!
+      </p>
+      
+      <div class="voice-selection">
+        <label for="voiceSelect">Select Voice:</label>
+        <select id="voiceSelect" class="voice-select">
+          <option value="en-US-Wavenet-A">English (US)</option>
+          <option value="en-US-Wavenet-B">English (US)</option>
+          <option value="en-US-Wavenet-C">English (US)</option>
+          <option value="en-US-Wavenet-D">English (US)</option>
+          <option value="en-US-Wavenet-E">English (US)</option>
+          <option value="en-US-Wavenet-F">English (US)</option>
+          <option value="en-US-Wavenet-G">English (US)</option>
+          <option value="en-US-Wavenet-H">English (US)</option>
+          <option value="en-US-Wavenet-I">English (US)</option>
+          <option value="en-US-Wavenet-J">English (US)</option>
+          <option value="en-US-Wavenet-K">English (US)</option>
+          <option value="en-US-Wavenet-L">English (US)</option>
+          <option value="en-US-Wavenet-M">English (US)</option>
+          <option value="en-US-Wavenet-N">English (US)</option>
+          <option value="en-US-Wavenet-O">English (US)</option>
+          <option value="en-US-Wavenet-P">English (US)</option>
+          <option value="en-US-Wavenet-Q">English (US)</option>
+          <option value="en-US-Wavenet-R">English (US)</option>
+          <option value="en-US-Wavenet-S">English (US)</option>
+          <option value="en-US-Wavenet-T">English (US)</option>
+          <option value="en-US-Wavenet-U">English (US)</option>
+          <option value="en-US-Wavenet-V">English (US)</option>
+          <option value="en-US-Wavenet-W">English (US)</option>
+          <option value="en-US-Wavenet-X">English (US)</option>
+          <option value="en-US-Wavenet-Y">English (US)</option>
+          <option value="en-US-Wavenet-Z">English (US)</option>
+          <option value="en-US-Wavenet-AA">English (US)</option>
+          <option value="en-US-Wavenet-AB">English (US)</option>
+          <option value="en-US-Wavenet-AC">English (US)</option>
+          <option value="en-US-Wavenet-AD">English (US)</option>
+          <option value="en-US-Wavenet-AE">English (US)</option>
+          <option value="en-US-Wavenet-AF">English (US)</option>
+          <option value="en-US-Wavenet-AG">English (US)</option>
+          <option value="en-US-Wavenet-AH">English (US)</option>
+          <option value="en-US-Wavenet-AI">English (US)</option>
+          <option value="en-US-Wavenet-AJ">English (US)</option>
+          <option value="en-US-Wavenet-AK">English (US)</option>
+          <option value="en-US-Wavenet-AL">English (US)</option>
+          <option value="en-US-Wavenet-AM">English (US)</option>
+          <option value="en-US-Wavenet-AN">English (US)</option>
+          <option value="en-US-Wavenet-AO">English (US)</option>
+          <option value="en-US-Wavenet-AP">English (US)</option>
+          <option value="en-US-Wavenet-AQ">English (US)</option>
+          <option value="en-US-Wavenet-AR">English (US)</option>
+          <option value="en-US-Wavenet-AS">English (US)</option>
+          <option value="en-US-Wavenet-AT">English (US)</option>
+          <option value="en-US-Wavenet-AU">English (US)</option>
+          <option value="en-US-Wavenet-AV">English (US)</option>
+          <option value="en-US-Wavenet-AW">English (US)</option>
+          <option value="en-US-Wavenet-AX">English (US)</option>
+          <option value="en-US-Wavenet-AY">English (US)</option>
+          <option value="en-US-Wavenet-AZ">English (US)</option>
+          <option value="en-US-Wavenet-BA">English (US)</option>
+          <option value="en-US-Wavenet-BB">English (US)</option>
+          <option value="en-US-Wavenet-BC">English (US)</option>
+          <option value="en-US-Wavenet-BD">English (US)</option>
+          <option value="en-US-Wavenet-BE">English (US)</option>
+          <option value="en-US-Wavenet-BF">English (US)</option>
+          <option value="en-US-Wavenet-BG">English (US)</option>
+          <option value="en-US-Wavenet-BH">English (US)</option>
+          <option value="en-US-Wavenet-BI">English (US)</option>
+          <option value="en-US-Wavenet-BJ">English (US)</option>
+          <option value="en-US-Wavenet-BK">English (US)</option>
+          <option value="en-US-Wavenet-BL">English (US)</option>
+          <option value="en-US-Wavenet-BM">English (US)</option>
+          <option value="en-US-Wavenet-BN">English (US)</option>
+          <option value="en-US-Wavenet-BO">English (US)</option>
+          <option value="en-US-Wavenet-BP">English (US)</option>
+          <option value="en-US-Wavenet-BQ">English (US)</option>
+          <option value="en-US-Wavenet-BR">English (US)</option>
+          <option value="en-US-Wavenet-BS">English (US)</option>
+          <option value="en-US-Wavenet-BT">English (US)</option>
+          <option value="en-US-Wavenet-BU">English (US)</option>
+          <option value="en-US-Wavenet-BV">English (US)</option>
+          <option value="en-US-Wavenet-BW">English (US)</option>
+          <option value="en-US-Wavenet-BX">English (US)</option>
+          <option value="en-US-Wavenet-BY">English (US)</option>
+          <option value="en-US-Wavenet-BZ">English (US)</option>
+          <option value="en-US-Wavenet-CA">English (US)</option>
+          <option value="en-US-Wavenet-CB">English (US)</option>
+          <option value="en-US-Wavenet-CC">English (US)</option>
+          <option value="en-US-Wavenet-CD">English (US)</option>
+          <option value="en-US-Wavenet-CE">English (US)</option>
+          <option value="en-US-Wavenet-CF">English (US)</option>
+          <option value="en-US-Wavenet-CG">English (US)</option>
+          <option value="en-US-Wavenet-CH">English (US)</option>
+          <option value="en-US-Wavenet-CI">English (US)</option>
+          <option value="en-US-Wavenet-CJ">English (US)</option>
+          <option value="en-US-Wavenet-CK">English (US)</option>
+          <option value="en-US-Wavenet-CL">English (US)</option>
+          <option value="en-US-Wavenet-CM">English (US)</option>
+          <option value="en-US-Wavenet-CN">English (US)</option>
+          <option value="en-US-Wavenet-CO">English (US)</option>
+          <option value="en-US-Wavenet-CP">English (US)</option>
+          <option value="en-US-Wavenet-CQ">English (US)</option>
+          <option value="en-US-Wavenet-CR">English (US)</option>
+          <option value="en-US-Wavenet-CS">English (US)</option>
+          <option value="en-US-Wavenet-CT">English (US)</option>
+          <option value="en-US-Wavenet-CU">English (US)</option>
+          <option value="en-US-Wavenet-CV">English (US)</option>
+          <option value="en-US-Wavenet-CW">English (US)</option>
+          <option value="en-US-Wavenet-CX">English (US)</option>
+          <option value="en-US-Wavenet-CY">English (US)</option>
+          <option value="en-US-Wavenet-CZ">English (US)</option>
+          <option value="en-US-Wavenet-DA">English (US)</option>
+          <option value="en-US-Wavenet-DB">English (US)</option>
+          <option value="en-US-Wavenet-DC">English (US)</option>
+          <option value="en-US-Wavenet-DD">English (US)</option>
+          <option value="en-US-Wavenet-DE">English (US)</option>
+          <option value="en-US-Wavenet-DF">English (US)</option>
+          <option value="en-US-Wavenet-DG">English (US)</option>
+          <option value="en-US-Wavenet-DH">English (US)</option>
+          <option value="en-US-Wavenet-DI">English (US)</option>
+          <option value="en-US-Wavenet-DJ">English (US)</option>
+          <option value="en-US-Wavenet-DK">English (US)</option>
+          <option value="en-US-Wavenet-DL">English (US)</option>
+          <option value="en-US-Wavenet-DM">English (US)</option>
+          <option value="en-US-Wavenet-DN">English (US)</option>
+          <option value="en-US-Wavenet-DO">English (US)</option>
+          <option value="en-US-Wavenet-DP">English (US)</option>
+          <option value="en-US-Wavenet-DQ">English (US)</option>
+          <option value="en-US-Wavenet-DR">English (US)</option>
+          <option value="en-US-Wavenet-DS">English (US)</option>
+          <option value="en-US-Wavenet-DT">English (US)</option>
+          <option value="en-US-Wavenet-DU">English (US)</option>
+          <option value="en-US-Wavenet-DV">English (US)</option>
+          <option value="en-US-Wavenet-DW">English (US)</option>
+          <option value="en-US-Wavenet-DX">English (US)</option>
+          <option value="en-US-Wavenet-DY">English (US)</option>
+          <option value="en-US-Wavenet-DZ">English (US)</option>
+          <option value="en-US-Wavenet-EA">English (US)</option>
+          <option value="en-US-Wavenet-EB">English (US)</option>
+          <option value="en-US-Wavenet-EC">English (US)</option>
+          <option value="en-US-Wavenet-ED">English (US)</option>
+          <option value="en-US-Wavenet-EE">English (US)</option>
+          <option value="en-US-Wavenet-EF">English (US)</option>
+          <option value="en-US-Wavenet-EG">English (US)</option>
+          <option value="en-US-Wavenet-EH">English (US)</option>
+          <option value="en-US-Wavenet-EI">English (US)</option>
+          <option value="en-US-Wavenet-EJ">English (US)</option>
+          <option value="en-US-Wavenet-EK">English (US)</option>
+          <option value="en-US-Wavenet-EL">English (US)</option>
+          <option value="en-US-Wavenet-EM">English (US)</option>
+          <option value="en-US-Wavenet-EN">English (US)</option>
+          <option value="en-US-Wavenet-EO">English (US)</option>
+          <option value="en-US-Wavenet-EP">English (US)</option>
+          <option value="en-US-Wavenet-EQ">English (US)</option>
+          <option value="en-US-Wavenet-ER">English (US)</option>
+          <option value="en-US-Wavenet-ES">English (US)</option>
+          <option value="en-US-Wavenet-ET">English (US)</option>
+          <option value="en-US-Wavenet-EU">English (US)</option>
+          <option value="en-US-Wavenet-EV">English (US)</option>
+          <option value="en-US-Wavenet-EW">English (US)</option>
+          <option value="en-US-Wavenet-EX">English (US)</option>
+          <option value="en-US-Wavenet-EY">English (US)</option>
+          <option value="en-US-Wavenet-EZ">English (US)</option>
+          <option value="en-US-Wavenet-FA">English (US)</option>
+          <option value="en-US-Wavenet-FB">English (US)</option>
+          <option value="en-US-Wavenet-FC">English (US)</option>
+          <option value="en-US-Wavenet-FD">English (US)</option>
+          <option value="en-US-Wavenet-FE">English (US)</option>
+          <option value="en-US-Wavenet-FF">English (US)</option>
+          <option value="en-US-Wavenet-FG">English (US)</option>
+          <option value="en-US-Wavenet-FH">English (US)</option>
+          <option value="en-US-Wavenet-FI">English (US)</option>
+          <option value="en-US-Wavenet-FJ">English (US)</option>
+          <option value="en-US-Wavenet-FK">English (US)</option>
+          <option value="en-US-Wavenet-FL">English (US)</option>
+          <option value="en-US-Wavenet-FM">English (US)</option>
+          <option value="en-US-Wavenet-FN">English (US)</option>
+          <option value="en-US-Wavenet-FO">English (US)</option>
+          <option value="en-US-Wavenet-FP">English (US)</option>
+          <option value="en-US-Wavenet-FQ">English (US)</option>
+          <option value="en-US-Wavenet-FR">English (US)</option>
+          <option value="en-US-Wavenet-FS">English (US)</option>
+          <option value="en-US-Wavenet-FT">English (US)</option>
+          <option value="en-US-Wavenet-FU">English (US)</option>
+          <option value="en-US-Wavenet-FV">English (US)</option>
+          <option value="en-US-Wavenet-FW">English (US)</option>
+          <option value="en-US-Wavenet-FX">English (US)</option>
+          <option value="en-US-Wavenet-FY">English (US)</option>
+          <option value="en-US-Wavenet-FZ">English (US)</option>
+          <option value="en-US-Wavenet-GA">English (US)</option>
+          <option value="en-US-Wavenet-GB">English (US)</option>
+          <option value="en-US-Wavenet-GC">English (US)</option>
+          <option value="en-US-Wavenet-GD">English (US)</option>
+          <option value="en-US-Wavenet-GE">English (US)</option>
+          <option value="en-US-Wavenet-GF">English (US)</option>
+          <option value="en-US-Wavenet-GG">English (US)</option>
+          <option value="en-US-Wavenet-GH">English (US)</option>
+          <option value="en-US-Wavenet-GI">English (US)</option>
+          <option value="en-US-Wavenet-GJ">English (US)</option>
+          <option value="en-US-Wavenet-GK">English (US)</option>
+          <option value="en-US-Wavenet-GL">English (US)</option>
+          <option value="en-US-Wavenet-GM">English (US)</option>
+          <option value="en-US-Wavenet-GN">English (US)</option>
+          <option value="en-US-Wavenet-GO">English (US)</option>
+          <option value="en-US-Wavenet-GP">English (US)</option>
+          <option value="en-US-Wavenet-GQ">English (US)</option>
+          <option value="en-US-Wavenet-GR">English (US)</option>
+          <option value="en-US-Wavenet-GS">English (US)</option>
+          <option value="en-US-Wavenet-GT">English (US)</option>
+          <option value="en-US-Wavenet-GU">English (US)</option>
+          <option value="en-US-Wavenet-GV">English (US)</option>
+          <option value="en-US-Wavenet-GW">English (US)</option>
+          <option value="en-US-Wavenet-GX">English (US)</option>
+          <option value="en-US-Wavenet-GY">English (US)</option>
+          <option value="en-US-Wavenet-GZ">English (US)</option>
+          <option value="en-US-Wavenet-HA">English (US)</option>
+          <option value="en-US-Wavenet-HB">English (US)</option>
+          <option value="en-US-Wavenet-HC">English (US)</option>
+          <option value="en-US-Wavenet-HD">English (US)</option>
+          <option value="en-US-Wavenet-HE">English (US)</option>
+          <option value="en-US-Wavenet-HF">English (US)</option>
+          <option value="en-US-Wavenet-HG">English (US)</option>
+          <option value="en-US-Wavenet-HH">English (US)</option>
+          <option value="en-US-Wavenet-HI">English (US)</option>
+          <option value="en-US-Wavenet-HJ">English (US)</option>
+          <option value="en-US-Wavenet-HK">English (US)</option>
+          <option value="en-US-Wavenet-HL">English (US)</option>
+          <option value="en-US-Wavenet-HM">English (US)</option>
+          <option value="en-US-Wavenet-HN">English (US)</option>
+          <option value="en-US-Wavenet-HO">English (US)</option>
+          <option value="en-US-Wavenet-HP">English (US)</option>
+          <option value="en-US-Wavenet-HQ">English (US)</option>
+          <option value="en-US-Wavenet-HR">English (US)</option>
+          <option value="en-US-Wavenet-HS">English (US)</option>
+          <option value="en-US-Wavenet-HT">English (US)</option>
+          <option value="en-US-Wavenet-HU">English (US)</option>
+          <option value="en-US-Wavenet-HV">English (US)</option>
+          <option value="en-US-Wavenet-HW">English (US)</option>
+          <option value="en-US-Wavenet-HX">English (US)</option>
+          <option value="en-US-Wavenet-HY">English (US)</option>
+          <option value="en-US-Wavenet-HZ">English (US)</option>
+          <option value="en-US-Wavenet-IA">English (US)</option>
+          <option value="en-US-Wavenet-IB">English (US)</option>
+          <option value="en-US-Wavenet-IC">English (US)</option>
+          <option value="en-US-Wavenet-ID">English (US)</option>
+          <option value="en-US-Wavenet-IE">English (US)</option>
+          <option value="en-US-Wavenet-IF">English (US)</option>
+          <option value="en-US-Wavenet-IG">English (US)</option>
+          <option value="en-US-Wavenet-IH">English (US)</option>
+          <option value="en-US-Wavenet-II">English (US)</option>
+          <option value="en-US-Wavenet-IJ">English (US)</option>
+          <option value="en-US-Wavenet-IK">English (US)</option>
+          <option value="en-US-Wavenet-IL">English (US)</option>
+          <option value="en-US-Wavenet-IM">English (US)</option>
+          <option value="en-US-Wavenet-IN">English (US)</option>
+          <option value="en-US-Wavenet-IO">English (US)</option>
+          <option value="en-US-Wavenet-IP">English (US)</option>
+          <option value="en-US-Wavenet-IQ">English (US)</option>
+          <option value="en-US-Wavenet-IR">English (US)</option>
+          <option value="en-US-Wavenet-IS">English (US)</option>
+          <option value="en-US-Wavenet-IT">English (US)</option>
+          <option value="en-US-Wavenet-IU">English (US)</option>
+          <option value="en-US-Wavenet-IV">English (US)</option>
+          <option value="en-US-Wavenet-IW">English (US)</option>
+          <option value="en-US-Wavenet-IX">English (US)</option>
+          <option value="en-US-Wavenet-IY">English (US)</option>
+          <option value="en-US-Wavenet-IZ">English (US)</option>
+          <option value="en-US-Wavenet-JA">English (US)</option>
+          <option value="en-US-Wavenet-JB">English (US)</option>
+          <option value="en-US-Wavenet-JC">English (US)</option>
+          <option value="en-US-Wavenet-JD">English (US)</option>
+          <option value="en-US-Wavenet-JE">English (US)</option>
+          <option value="en-US-Wavenet-JF">English (US)</option>
+          <option value="en-US-Wavenet-JG">English (US)</option>
+          <option value="en-US-Wavenet-JH">English (US)</option>
+          <option value="en-US-Wavenet-JI">English (US)</option>
+          <option value="en-US-Wavenet-JJ">English (US)</option>
+          <option value="en-US-Wavenet-JK">English (US)</option>
+          <option value="en-US-Wavenet-JL">English (US)</option>
+          <option value="en-US-Wavenet-JM">English (US)</option>
+          <option value="en-US-Wavenet-JN">English (US)</option>
+          <option value="en-US-Wavenet-JO">English (US)</option>
+          <option value="en-US-Wavenet-JP">English (US)</option>
+          <option value="en-US-Wavenet-JQ">English (US)</option>
+          <option value="en-US-Wavenet-JR">English (US)</option>
+          <option value="en-US-Wavenet-JS">English (US)</option>
+          <option value="en-US-Wavenet-JT">English (US)</option>
+          <option value="en-US-Wavenet-JU">English (US)</option>
+          <option value="en-US-Wavenet-JV">English (US)</option>
+          <option value="en-US-Wavenet-JW">English (US)</option>
+          <option value="en-US-Wavenet-JX">English (US)</option>
+          <option value="en-US-Wavenet-JY">English (US)</option>
+          <option value="en-US-Wavenet-JZ">English (US)</option>
+          <option value="en-US-Wavenet-KA">English (US)</option>
+          <option value="en-US-Wavenet-KB">English (US)</option>
+          <option value="en-US-Wavenet-KC">English (US)</option>
+          <option value="en-US-Wavenet-KD">English (US)</option>
+          <option value="en-US-Wavenet-KE">English (US)</option>
+          <option value="en-US-Wavenet-KF">English (US)</option>
+          <option value="en-US-Wavenet-KG">English (US)</option>
+          <option value="en-US-Wavenet-KH">English (US)</option>
+          <option value="en-US-Wavenet-KI">English (US)</option>
+          <option value="en-US-Wavenet-KJ">English (US)</option>
+          <option value="en-US-Wavenet-KK">English (US)</option>
+          <option value="en-US-Wavenet-KL">English (US)</option>
+          <option value="en-US-Wavenet-KM">English (US)</option>
+          <option value="en-US-Wavenet-KN">English (US)</option>
+          <option value="en-US-Wavenet-KO">English (US)</option>
+          <option value="en-US-Wavenet-KP">English (US)</option>
+          <option value="en-US-Wavenet-KQ">English (US)</option>
+          <option value="en-US-Wavenet-KR">English (US)</option>
+          <option value="en-US-Wavenet-KS">English (US)</option>
+          <option value="en-US-Wavenet-KT">English (US)</option>
+          <option value="en-US-Wavenet-KU">English (US)</option>
+          <option value="en-US-Wavenet-KV">English (US)</option>
+          <option value="en-US-Wavenet-KW">English (US)</option>
+          <option value="en-US-Wavenet-KX">English (US)</option>
+          <option value="en-US-Wavenet-KY">English (US)</option>
+          <option value="en-US-Wavenet-KZ">English (US)</option>
+          <option value="en-US-Wavenet-LA">English (US)</option>
+          <option value="en-US-Wavenet-LB">English (US)</option>
+          <option value="en-US-Wavenet-LC">English (US)</option>
+          <option value="en-US-Wavenet-LD">English (US)</option>
+          <option value="en-US-Wavenet-LE">English (US)</option>
+          <option value="en-US-Wavenet-LF">English (US)</option>
+          <option value="en-US-Wavenet-LG">English (US)</option>
+          <option value="en-US-Wavenet-LH">English (US)</option>
+          <option value="en-US-Wavenet-LI">English (US)</option>
+          <option value="en-US-Wavenet-LJ">English (US)</option>
+          <option value="en-US-Wavenet-LK">English (US)</option>
+          <option value="en-US-Wavenet-LL">English (US)</option>
+          <option value="en-US-Wavenet-LM">English (US)</option>
+          <option value="en-US-Wavenet-LN">English (US)</option>
+          <option value="en-US-Wavenet-LO">English (US)</option>
+          <option value="en-US-Wavenet-LP">English (US)</option>
+          <option value="en-US-Wavenet-LQ">English (US)</option>
+          <option value="en-US-Wavenet-LR">English (US)</option>
+          <option value="en-US-Wavenet-LS">English (US)</option>
+          <option value="en-US-Wavenet-LT">English (US)</option>
+          <option value="en-US-Wavenet-LU">English (US)</option>
+          <option value="en-US-Wavenet-LV">English (US)</option>
+          <option value="en-US-Wavenet-LW">English (US)</option>
+          <option value="en-US-Wavenet-LX">English (US)</option>
+          <option value="en-US-Wavenet-LY">English (US)</option>
+          <option value="en-US-Wavenet-LZ">English (US)</option>
+          <option value="en-US-Wavenet-MA">English (US)</option>
+          <option value="en-US-Wavenet-MB">English (US)</option>
+          <option value="en-US-Wavenet-MC">English (US)</option>
+          <option value="en-US-Wavenet-MD">English (US)</option>
+          <option value="en-US-Wavenet-ME">English (US)</option>
+          <option value="en-US-Wavenet-MF">English (US)</option>
+          <option value="en-US-Wavenet-MG">English (US)</option>
+          <option value="en-US-Wavenet-MH">English (US)</option>
+          <option value="en-US-Wavenet-MI">English (US)</option>
+          <option value="en-US-Wavenet-MJ">English (US)</option>
+          <option value="en-US-Wavenet-MK">English (US)</option>
+          <option value="en-US-Wavenet-ML">English (US)</option>
+          <option value="en-US-Wavenet-MM">English (US)</option>
+          <option value="en-US-Wavenet-MN">English (US)</option>
+          <option value="en-US-Wavenet-MO">English (US)</option>
+          <option value="en-US-Wavenet-MP">English (US)</option>
+          <option value="en-US-Wavenet-MQ">English (US)</option>
+          <option value="en-US-Wavenet-MR">English (US)</option>
+          <option value="en-US-Wavenet-MS">English (US)</option>
+          <option value="en-US-Wavenet-MT">English (US)</option>
+          <option value="en-US-Wavenet-MU">English (US)</option>
+          <option value="en-US-Wavenet-MV">English (US)</option>
+          <option value="en-US-Wavenet-MW">English (US)</option>
+          <option value="en-US-Wavenet-MX">English (US)</option>
+          <option value="en-US-Wavenet-MY">English (US)</option>
+          <option value="en-US-Wavenet-MZ">English (US)</option>
+          <option value="en-US-Wavenet-NA">English (US)</option>
+          <option value="en-US-Wavenet-NB">English (US)</option>
+          <option value="en-US-Wavenet-NC">English (US)</option>
+          <option value="en-US-Wavenet-ND">English (US)</option>
+          <option value="en-US-Wavenet-NE">English (US)</option>
+          <option value="en-US-Wavenet-NF">English (US)</option>
+          <option value="en-US-Wavenet-NG">English (US)</option>
+          <option value="en-US-Wavenet-NH">English (US)</option>
+          <option value="en-US-Wavenet-NI">English (US)</option>
+          <option value="en-US-Wavenet-NJ">English (US)</option>
+          <option value="en-US-Wavenet-NK">English (US)</option>
+          <option value="en-US-Wavenet-NL">English (US)</option>
+          <option value="en-US-Wavenet-NM">English (US)</option>
+          <option value="en-US-Wavenet-NN">English (US)</option>
+          <option value="en-US-Wavenet-NO">English (US)</option>
+          <option value="en-US-Wavenet-NP">English (US)</option>
+          <option value="en-US-Wavenet-NQ">English (US)</option>
+          <option value="en-US-Wavenet-NR">English (US)</option>
+          <option value="en-US-Wavenet-NS">English (US)</option>
+          <option value="en-US-Wavenet-NT">English (US)</option>
+          <option value="en-US-Wavenet-NU">English (US)</option>
+          <option value="en-US-Wavenet-NV">English (US)</option>
+          <option value="en-US-Wavenet-NW">English (US)</option>
+          <option value="en-US-Wavenet-NX">English (US)</option>
+          <option value="en-US-Wavenet-NY">English (US)</option>
+          <option value="en-US-Wavenet-NZ">English (US)</option>
+          <option value="en-US-Wavenet-OA">English (US)</option>
+          <option value="en-US-Wavenet-OB">English (US)</option>
+          <option value="en-US-Wavenet-OC">English (US)</option>
+          <option value="en-US-Wavenet-OD">English (US)</option>
+          <option value="en-US-Wavenet-OE">English (US)</option>
+          <option value="en-US-Wavenet-OF">English (US)</option>
+          <option value="en-US-Wavenet-OG">English (US)</option>
+          <option value="en-US-Wavenet-OH">English (US)</option>
+          <option value="en-US-Wavenet-OI">English (US)</option>
+          <option value="en-US-Wavenet-OJ">English (US)</option>
+          <option value="en-US-Wavenet-OK">English (US)</option>
+          <option value="en-US-Wavenet-OL">English (US)</option>
+          <option value="en-US-Wavenet-OM">English (US)</option>
+          <option value="en-US-Wavenet-ON">English (US)</option>
+          <option value="en-US-Wavenet-OO">English (US)</option>
+          <option value="en-US-Wavenet-OP">English (US)</option>
+          <option value="en-US-Wavenet-OQ">English (US)</option>
+          <option value="en-US-Wavenet-OR">English (US)</option>
+          <option value="en-US-Wavenet-OS">English (US)</option>
+          <option value="en-US-Wavenet-OT">English (US)</option>
+          <option value="en-US-Wavenet-OU">English (US)</option>
+          <option value="en-US-Wavenet-OV">English (US)</option>
+          <option value="en-US-Wavenet-OW">English (US)</option>
+          <option value="en-US-Wavenet-OX">English (US)</option>
+          <option value="en-US-Wavenet-OY">English (US)</option>
+          <option value="en-US-Wavenet-OZ">English (US)</option>
+          <option value="en-US-Wavenet-PA">English (US)</option>
+          <option value="en-US-Wavenet-PB">English (US)</option>
+          <option value="en-US-Wavenet-PC">English (US)</option>
+          <option value="en-US-Wavenet-PD">English (US)</option>
+          <option value="en-US-Wavenet-PE">English (US)</option>
+          <option value="en-US-Wavenet-PF">English (US)</option>
+          <option value="en-US-Wavenet-PG">English (US)</option>
+          <option value="en-US-Wavenet-PH">English (US)</option>
+          <option value="en-US-Wavenet-PI">English (US)</option>
+          <option value="en-US-Wavenet-PJ">English (US)</option>
+          <option value="en-US-Wavenet-PK">English (US)</option>
+          <option value="en-US-Wavenet-PL">English (US)</option>
+          <option value="en-US-Wavenet-PM">English (US)</option>
+          <option value="en-US-Wavenet-PN">English (US)</option>
+          <option value="en-US-Wavenet-PO">English (US)</option>
+          <option value="en-US-Wavenet-PP">English (US)</option>
+          <option value="en-US-Wavenet-PQ">English (US)</option>
+          <option value="en-US-Wavenet-PR">English (US)</option>
+          <option value="en-US-Wavenet-PS">English (US)</option>
+          <option value="en-US-Wavenet-PT">English (US)</option>
+          <option value="en-US-Wavenet-PU">English (US)</option>
+          <option value="en-US-Wavenet-PV">English (US)</option>
+          <option value="en-US-Wavenet-PW">English (US)</option>
+          <option value="en-US-Wavenet-PX">English (US)</option>
+          <option value="en-US-Wavenet-PY">English (US)</option>
+          <option value="en-US-Wavenet-PZ">English (US)</option>
+          <option value="en-US-Wavenet-QA">English (US)</option>
+          <option value="en-US-Wavenet-QB">English (US)</option>
+          <option value="en-US-Wavenet-QC">English (US)</option>
+          <option value="en-US-Wavenet-QD">English (US)</option>
+          <option value="en-US-Wavenet-QE">English (US)</option>
+          <option value="en-US-Wavenet-QF">English (US)</option>
+          <option value="en-US-Wavenet-QG">English (US)</option>
+          <option value="en-US-Wavenet-QH">English (US)</option>
+          <option value="en-US-Wavenet-QI">English (US)</option>
+          <option value="en-US-Wavenet-QJ">English (US)</option>
+          <option value="en-US-Wavenet-QK">English (US)</option>
+          <option value="en-US-Wavenet-QL">English (US)</option>
+          <option value="en-US-Wavenet-QM">English (US)</option>
+          <option value="en-US-Wavenet-QN">English (US)</option>
+          <option value="en-US-Wavenet-QO">English (US)</option>
+          <option value="en-US-Wavenet-QP">English (US)</option>
+          <option value="en-US-Wavenet-QQ">English (US)</option>
+          <option value="en-US-Wavenet-QR">English (US)</option>
+          <option value="en-US-Wavenet-QS">English (US)</option>
+          <option value="en-US-Wavenet-QT">English (US)</option>
+          <option value="en-US-Wavenet-QU">English (US)</option>
+          <option value="en-US-Wavenet-QV">English (US)</option>
+          <option value="en-US-Wavenet-QW">English (US)</option>
+          <option value="en-US-Wavenet-QX">English (US)</option>
+          <option value="en-US-Wavenet-QY">English (US)</option>
+          <option value="en-US-Wavenet-QZ">English (US)</option>
+          <option value="en-US-Wavenet-RA">English (US)</option>
+          <option value="en-US-Wavenet-RB">English (US)</option>
+          <option value="en-US-Wavenet-RC">English (US)</option>
+          <option value="en-US-Wavenet-RD">English (US)</option>
+          <option value="en-US-Wavenet-RE">English (US)</option>
+          <option value="en-US-Wavenet-RF">English (US)</option>
+          <option value="en-US-Wavenet-RG">English (US)</option>
+          <option value="en-US-Wavenet-RH">English (US)</option>
+          <option value="en-US-Wavenet-RI">English (US)</option>
+          <option value="en-US-Wavenet-RJ">English (US)</option>
+          <option value="en-US-Wavenet-RK">English (US)</option>
+          <option value="en-US-Wavenet-RL">English (US)</option>
+          <option value="en-US-Wavenet-RM">English (US)</option>
+          <option value="en-US-Wavenet-RN">English (US)</option>
+          <option value="en-US-Wavenet-RO">English (US)</option>
+          <option value="en-US-Wavenet-RP">English (US)</option>
+          <option value="en-US-Wavenet-RQ">English (US)</option>
+          <option value="en-US-Wavenet-RR">English (US)</option>
+          <option value="en-US-Wavenet-RS">English (US)</option>
+          <option value="en-US-Wavenet-RT">English (US)</option>
+          <option value="en-US-Wavenet-RU">English (US)</option>
+          <option value="en-US-Wavenet-RV">English (US)</option>
+          <option value="en-US-Wavenet-RW">English (US)</option>
+          <option value="en-US-Wavenet-RX">English (US)</option>
+          <option value="en-US-Wavenet-RY">English (US)</option>
+          <option value="en-US-Wavenet-RZ">English (US)</option>
+          <option value="en-US-Wavenet-SA">English (US)</option>
+          <option value="en-US-Wavenet-SB">English (US)</option>
+          <option value="en-US-Wavenet-SC">English (US)</option>
+          <option value="en-US-Wavenet-SD">English (US)</option>
+          <option value="en-US-Wavenet-SE">English (US)</option>
+          <option value="en-US-Wavenet-SF">English (US)</option>
+          <option value="en-US-Wavenet-SG">English (US)</option>
+          <option value="en-US-Wavenet-SH">English (US)</option>
+          <option value="en-US-Wavenet-SI">English (US)</option>
+          <option value="en-US-Wavenet-SJ">English (US)</option>
+          <option value="en-US-Wavenet-SK">English (US)</option>
+          <option value="en-US-Wavenet-SL">English (US)</option>
+          <option value="en-US-Wavenet-SM">English (US)</option>
+          <option value="en-US-Wavenet-SN">English (US)</option>
+          <option value="en-US-Wavenet-SO">English (US)</option>
+          <option value="en-US-Wavenet-SP">English (US)</option>
+          <option value="en-US-Wavenet-SQ">English (US)</option>
+          <option value="en-US-Wavenet-SR">English (US)</option>
+          <option value="en-US-Wavenet-SS">English (US)</option>
+          <option value="en-US-Wavenet-ST">English (US)</option>
+          <option value="en-US-Wavenet-SU">English (US)</option>
+          <option value="en-US-Wavenet-SV">English (US)</option>
+          <option value="en-US-Wavenet-SW">English (US)</option>
+          <option value="en-US-Wavenet-SX">English (US)</option>
+          <option value="en-US-Wavenet-SY">English (US)</option>
+          <option value="en-US-Wavenet-SZ">English (US)</option>
+          <option value="en-US-Wavenet-TA">English (US)</option>
+          <option value="en-US-Wavenet-TB">English (US)</option>
+          <option value="en-US-Wavenet-TC">English (US)</option>
+          <option value="en-US-Wavenet-TD">English (US)</option>
+          <option value="en-US-Wavenet-TE">English (US)</option>
+          <option value="en-US-Wavenet-TF">English (US)</option>
+          <option value="en-US-Wavenet-TG">English (US)</option>
+          <option value="en-US-Wavenet-TH">English (US)</option>
+          <option value="en-US-Wavenet-TI">English (US)</option>
+          <option value="en-US-Wavenet-TJ">English (US)</option>
+          <option value="en-US-Wavenet-TK">English (US)</option>
+          <option value="en-US-Wavenet-TL">English (US)</option>
+          <option value="en-US-Wavenet-TM">English (US)</option>
+          <option value="en-US-Wavenet-TN">English (US)</option>
+          <option value="en-US-Wavenet-TO">English (US)</option>
+          <option value="en-US-Wavenet-TP">English (US)</option>
+          <option value="en-US-Wavenet-TQ">English (US)</option>
+          <option value="en-US-Wavenet-TR">English (US)</option>
+          <option value="en-US-Wavenet-TS">English (US)</option>
+          <option value="en-US-Wavenet-TT">English (US)</option>
+          <option value="en-US-Wavenet-TU">English (US)</option>
+          <option value="en-US-Wavenet-TV">English (US)</option>
+          <option value="en-US-Wavenet-TW">English (US)</option>
+          <option value="en-US-Wavenet-TX">English (US)</option>
+          <option value="en-US-Wavenet-TY">English (US)</option>
+          <option value="en-US-Wavenet-TZ">English (US)</option>
+          <option value="en-US-Wavenet-UA">English (US)</option>
+          <option value="en-US-Wavenet-UB">English (US)</option>
+          <option value="en-US-Wavenet-UC">English (US)</option>
+          <option value="en-US-Wavenet-UD">English (US)</option>
+          <option value="en-US-Wavenet-UE">English (US)</option>
+          <option value="en-US-Wavenet-UF">English (US)</option>
+          <option value="en-US-Wavenet-UG">English (US)</option>
+          <option value="en-US-Wavenet-UH">English (US)</option>
+          <option value="en-US-Wavenet-UI">English (US)</option>
+          <option value="en-US-Wavenet-UJ">English (US)</option>
+          <option value="en-US-Wavenet-UK">English (US)</option>
+          <option value="en-US-Wavenet-UL">English (US)</option>
+          <option value="en-US-Wavenet-UM">English (US)</option>
+          <option value="en-US-Wavenet-UN">English (US)</option>
+          <option value="en-US-Wavenet-UO">English (US)</option>
+          <option value="en-US-Wavenet-UP">English (US)</option>
+          <option value="en-US-Wavenet-UQ">English (US)</option>
+          <option value="en-US-Wavenet-UR">English (US)</option>
+          <option value="en-US-Wavenet-US">English (US)</option>
+          <option value="en-US-Wavenet-UT">English (US)</option>
+          <option value="en-US-Wavenet-UU">English (US)</option>
+          <option value="en-US-Wavenet-UV">English (US)</option>
+          <option value="en-US-Wavenet-UW">English (US)</option>
+          <option value="en-US-Wavenet-UX">English (US)</option>
+          <option value="en-US-Wavenet-UY">English (US)</option>
+          <option value="en-US-Wavenet-UZ">English (US)</option>
+          <option value="en-US-Wavenet-VA">English (US)</option>
+          <option value="en-US-Wavenet-VB">English (US)</option>
+          <option value="en-US-Wavenet-VC">English (US)</option>
+          <option value="en-US-Wavenet-VD">English (US)</option>
+          <option value="en-US-Wavenet-VE">English (US)</option>
+          <option value="en-US-Wavenet-VF">English (US)</option>
+          <option value="en-US-Wavenet-VG">English (US)</option>
+          <option value="en-US-Wavenet-VH">English (US)</option>
+          <option value="en-US-Wavenet-VI">English (US)</option>
+          <option value="en-US-Wavenet-VJ">English (US)</option>
+          <option value="en-US-Wavenet-VK">English (US)</option>
+          <option value="en-US-Wavenet-VL">English (US)</option>
+          <option value="en-US-Wavenet-VM">English (US)</option>
+          <option value="en-US-Wavenet-VN">English (US)</option>
+          <option value="en-US-Wavenet-VO">English (US)</option>
+          <option value="en-US-Wavenet-VP">English (US)</option>
+          <option value="en-US-Wavenet-VQ">English (US)</option>
+          <option value="en-US-Wavenet-VR">English (US)</option>
+          <option value="en-US-Wavenet-VS">English (US)</option>
+          <option value="en-US-Wavenet-VT">English (US)</option>
+          <option value="en-US-Wavenet-VU">English (US)</option>
+          <option value="en-US-Wavenet-VV">English (US)</option>
+          <option value="en-US-Wavenet-VW">English (US)</option>
+          <option value="en-US-Wavenet-VX">English (US)</option>
+          <option value="en-US-Wavenet-VY">English (US)</option>
+          <option value="en-US-Wavenet-VZ">English (US)</option>
+          <option value="en-US-Wavenet-WA">English (US)</option>
+          <option value="en-US-Wavenet-WB">English (US)</option>
+          <option value="en-US-Wavenet-WC">English (US)</option>
+          <option value="en-US-Wavenet-WD">English (US)</option>
+          <option value="en-US-Wavenet-WE">English (US)</option>
+          <option value="en-US-Wavenet-WF">English (US)</option>
+          <option value="en-US-Wavenet-WG">English (US)</option>
+          <option value="en-US-Wavenet-WH">English (US)</option>
+          <option value="en-US-Wavenet-WI">English (US)</option>
+          <option value="en-US-Wavenet-WJ">English (US)</option>
+          <option value="en-US-Wavenet-WK">English (US)</option>
+          <option value="en-US-Wavenet-WL">English (US)</option>
+          <option value="en-US-Wavenet-WM">English (US)</option>
+          <option value="en-US-Wavenet-WN">English (US)</option>
+          <option value="en-US-Wavenet-WO">English (US)</option>
+          <option value="en-US-Wavenet-WP">English (US)</option>
+          <option value="en-US-Wavenet-WQ">English (US)</option>
+          <option value="en-US-Wavenet-WR">English (US)</option>
+          <option value="en-US-Wavenet-WS">English (US)</option>
+          <option value="en-US-Wavenet-WT">English (US)</option>
+          <option value="en-US-Wavenet-WU">English (US)</option>
+          <option value="en-US-Wavenet-WV">English (US)</option>
+          <option value="en-US-Wavenet-WW">English (US)</option>
+          <option value="en-US-Wavenet-WX">English (US)</option>
+          <option value="en-US-Wavenet-WY">English (US)</option>
+          <option value="en-US-Wavenet-WZ">English (US)</option>
+          <option value="en-US-Wavenet-XA">English (US)</option>
+          <option value="en-US-Wavenet-XB">English (US)</option>
+          <option value="en-US-Wavenet-XC">English (US)</option>
+          <option value="en-US-Wavenet-XD">English (US)</option>
+          <option value="en-US-Wavenet-XE">English (US)</option>
+          <option value="en-US-Wavenet-XF">English (US)</option>
+          <option value="en-US-Wavenet-XG">English (US)</option>
+          <option value="en-US-Wavenet-XH">English (US)</option>
+          <option value="en-US-Wavenet-XI">English (US)</option>
+          <option value="en-US-Wavenet-XJ">English (US)</option>
+          <option value="en-US-Wavenet-XK">English (US)</option>
+          <option value="en-US-Wavenet-XL">English (US)</option>
+          <option value="en-US-Wavenet-XM">English (US)</option>
+          <option value="en-US-Wavenet-XN">English (US)</option>
+          <option value="en-US-Wavenet-XO">English (US)</option>
+          <option value="en-US-Wavenet-XP">English (US)</option>
+          <option value="en-US-Wavenet-XQ">English (US)</option>
+          <option value="en-US-Wavenet-XR">English (US)</option>
+          <option value="en-US-Wavenet-XS">English (US)</option>
+          <option value="en-US-Wavenet-XT">English (US)</option>
+          <option value="en-US-Wavenet-XU">English (US)</option>
+          <option value="en-US-Wavenet-XV">English (US)</option>
+          <option value="en-US-Wavenet-XW">English (US)</option>
+          <option value="en-US-Wavenet-XX">English (US)</option>
+          <option value="en-US-Wavenet-XY">English (US)</option>
+          <option value="en-US-Wavenet-XZ">English (US)</option>
+          <option value="en-US-Wavenet-YA">English (US)</option>
+          <option value="en-US-Wavenet-YB">English (US)</option>
+          <option value="en-US-Wavenet-YC">English (US)</option>
+          <option value="en-US-Wavenet-YD">English (US)</option>
+          <option value="en-US-Wavenet-YE">English (US)</option>
+          <option value="en-US-Wavenet-YF">English (US)</option>
+          <option value="en-US-Wavenet-YG">English (US)</option>
+          <option value="en-US-Wavenet-YH">English (US)</option>
+          <option value="en-US-Wavenet-YI">English (US)</option>
+          <option value="en-US-Wavenet-YJ">English (US)</option>
+          <option value="en-US-Wavenet-YK">English (US)</option>
+          <option value="en-US-Wavenet-YL">English (US)</option>
+          <option value="en-US-Wavenet-YM">English (US)</option>
+          <option value="en-US-Wavenet-YN">English (US)</option>
+          <option value="en-US-Wavenet-YO">English (US)</option>
+          <option value="en-US-Wavenet-YP">English (US)</option>
+          <option value="en-US-Wavenet-YQ">English (US)</option>
+          <option value="en-US-Wavenet-YR">English (US)</option>
+          <option value="en-US-Wavenet-YS">English (US)</option>
+          <option value="en-US-Wavenet-YT">English (US)</option>
+          <option value="en-US-Wavenet-YU">English (US)</option>
+          <option value="en-US-Wavenet-YV">English (US)</option>
+          <option value="en-US-Wavenet-YW">English (US)</option>
+          <option value="en-US-Wavenet-YX">English (US)</option>
+          <option value="en-US-Wavenet-YY">English (US)</option>
+          <option value="en-US-Wavenet-YZ">English (US)</option>
+          <option value="en-US-Wavenet-ZA">English (US)</option>
+          <option value="en-US-Wavenet-ZB">English (US)</option>
+          <option value="en-US-Wavenet-ZC">English (US)</option>
+          <option value="en-US-Wavenet-ZD">English (US)</option>
+          <option value="en-US-Wavenet-ZE">English (US)</option>
+          <option value="en-US-Wavenet-ZF">English (US)</option>
+          <option value="en-US-Wavenet-ZG">English (US)</option>
+          <option value="en-US-Wavenet-ZH">English (US)</option>
+          <option value="en-US-Wavenet-ZI">English (US)</option>
+          <option value="en-US-Wavenet-ZJ">English (US)</option>
+          <option value="en-US-Wavenet-ZK">English (US)</option>
+          <option value="en-US-Wavenet-ZL">English (US)</option>
+          <option value="en-US-Wavenet-ZM">English (US)</option>
+          <option value="en-US-Wavenet-ZN">English (US)</option>
+          <option value="en-US-Wavenet-ZO">English (US)</option>
+          <option value="en-US-Wavenet-ZP">English (US)</option>
+          <option value="en-US-Wavenet-ZQ">English (US)</option>
+          <option value="en-US-Wavenet-ZR">English (US)</option>
+          <option value="en-US-Wavenet-ZS">English (US)</option>
+          <option value="en-US-Wavenet-ZT">English (US)</option>
+          <option value="en-US-Wavenet-ZU">English (US)</option>
+          <option value="en-US-Wavenet-ZV">English (US)</option>
+          <option value="en-US-Wavenet-ZW">English (US)</option>
+          <option value="en-US-Wavenet-ZX">English (US)</option>
+          <option value="en-US-Wavenet-ZY">English (US)</option>
+          <option value="en-US-Wavenet-ZZ">English (US)</option>
+        </select>
+      </div>
+
+      <div class="record-button-container">
+        <button id="recordButton" class="record-button" onclick="toggleRecording()" disabled>
+          Start
+        </button>
+      </div>
+
+      <!-- Status Messages -->
+      <div id="statusMessage" class="status-message" style="display: none;"></div>
+      
+      <!-- Hidden Audio Elements -->
+      <audio id="reviewAudio" class="hidden-audio"></audio>
+      <audio id="responseAudio" class="hidden-audio"></audio>
+    </div>
+
+    <!-- Chat History Section -->
+    <div id="chatHistorySection" class="chat-history-section">
+      <h3>Conversation History</h3>
+      <div class="chat-history" id="chatHistory">
+        <!-- Chat messages will be displayed here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let recordedAudioBlob = null;
+    let currentSessionId = null;
+    let isSessionActive = false;
+    let isRecording = false;
+
+    // Initialize the app
+    window.addEventListener('load', function() {
+      loadVoices();
+      // Check if there's a session ID in the URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session');
+      if (sessionId) {
+        loadExistingSession(sessionId);
+      }
+    });
+
+    async function createNewSession() {
+      try {
+        const response = await fetch('/agent/session', {
+          method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          currentSessionId = data.session_id;
+          isSessionActive = true;
+          updateSessionUI();
+          updateURL();
+          enableRecording();
+          loadChatHistory();
+          showStatus('New chat session created!', 'success');
+        } else {
+          showStatus('Failed to create session: ' + data.detail, 'error');
+        }
+      } catch (error) {
+        showStatus('Failed to create session: ' + error.message, 'error');
+      }
+    }
+
+    async function loadExistingSession(sessionId) {
+      try {
+        const response = await fetch(`/agent/chat/${sessionId}`);
+        if (response.ok) {
+          currentSessionId = sessionId;
+          isSessionActive = true;
+          updateSessionUI();
+          updateURL();
+          enableRecording();
+          loadChatHistory();
+          showStatus('Existing session loaded!', 'success');
+        } else {
+          showStatus('Session not found or expired', 'error');
+        }
+      } catch (error) {
+        showStatus('Failed to load session: ' + error.message, 'error');
+      }
+    }
+
+    function updateSessionUI() {
+      const sessionStatus = document.getElementById('sessionStatus');
+      const sessionIdDisplay = document.getElementById('sessionIdDisplay');
+      const startSessionBtn = document.getElementById('startSessionBtn');
+      const statusIndicator = document.querySelector('.status-indicator');
+      const statusText = document.getElementById('sessionStatusText');
+
+      if (isSessionActive && currentSessionId) {
+        statusIndicator.className = 'status-indicator status-active';
+        statusText.textContent = 'Session Active';
+        sessionIdDisplay.style.display = 'block';
+        document.getElementById('sessionIdText').textContent = currentSessionId;
+        startSessionBtn.style.display = 'none';
+      } else {
+        statusIndicator.className = 'status-indicator status-inactive';
+        statusText.textContent = 'No active session';
+        sessionIdDisplay.style.display = 'none';
+        startSessionBtn.style.display = 'block';
+      }
+    }
+
+    function updateURL() {
+      if (currentSessionId) {
+        const url = new URL(window.location);
+        url.searchParams.set('session', currentSessionId);
+        window.history.replaceState({}, '', url);
+      }
+    }
+
+    function enableRecording() {
+      document.getElementById('recordButton').disabled = false;
+    }
+
+    async function loadChatHistory() {
+      if (!currentSessionId) return;
+      
+      try {
+        const response = await fetch(`/agent/chat/${currentSessionId}`);
+        if (response.ok) {
+          const data = await response.json();
+          displayChatHistory(data.messages);
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      }
+    }
+
+    function displayChatHistory(messages) {
+      const chatHistoryDiv = document.getElementById('chatHistory');
+      const chatHistorySection = document.getElementById('chatHistorySection');
+      
+      if (messages && messages.length > 0) {
+        chatHistorySection.classList.add('visible');
+        chatHistoryDiv.innerHTML = '';
+        
+        messages.forEach(message => {
+          const messageDiv = document.createElement('div');
+          messageDiv.className = `chat-message ${message.role}`;
+          
+          const roleDiv = document.createElement('div');
+          roleDiv.className = 'role';
+          roleDiv.textContent = message.role === 'user' ? 'You' : 'AI Assistant';
+          
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'content';
+          contentDiv.textContent = message.content;
+          
+          messageDiv.appendChild(roleDiv);
+          messageDiv.appendChild(contentDiv);
+          chatHistoryDiv.appendChild(messageDiv);
+        });
+        
+        // Scroll to bottom
+        chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;
+      } else {
+        chatHistorySection.classList.remove('visible');
+      }
+    }
+
+    function toggleRecording() {
+      if (!isSessionActive) {
+        showStatus('Please start a chat session first', 'error');
+        return;
+      }
+      
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+
+    function startRecording() {
+      audioChunks = [];
+      hideStatus();
+      
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.start();
+          
+          isRecording = true;
+          updateRecordButton();
+          showStatus('Recording... Speak now!', 'success');
+          
+          mediaRecorder.ondataavailable = e => {
+            if (e.data.size > 0) audioChunks.push(e.data);
+          };
+          
+          mediaRecorder.onstop = () => {
+            recordedAudioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            isRecording = false;
+            updateRecordButton();
+            processRecording();
+          };
+        })
+        .catch(err => {
+          showStatus('Microphone access denied or not available.', 'error');
+        });
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      }
+    }
+
+    function updateRecordButton() {
+      const button = document.getElementById('recordButton');
+      if (isRecording) {
+        button.classList.add('recording');
+        button.textContent = 'Stop';
+      } else {
+        button.classList.remove('recording');
+        button.textContent = 'Start';
+      }
+    }
+
+    async function processRecording() {
+      if (!recordedAudioBlob) {
+        showStatus('No recording available.', 'error');
+        return;
+      }
+      
+      if (!currentSessionId) {
+        showStatus('No active session. Please start a new chat session.', 'error');
+        return;
+      }
+      
+      showStatus('Processing: Audio → Transcription → LLM with context → TTS...', 'success');
+      
+      const formData = new FormData();
+      const filename = `chat_${Date.now()}.webm`;
+      formData.append('file', recordedAudioBlob, filename);
+      
+      // Use currently selected voice if present
+      const selectedVoice = document.getElementById('voiceSelect').value;
+      if (selectedVoice) {
+        formData.append('voice_id', selectedVoice);
+      }
+      
+      try {
+        const res = await fetch(`/agent/chat/${currentSessionId}`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await res.json();
+        if (res.ok) {
+          showStatus('AI is responding...', 'success');
+          
+          // Play audio automatically
+          const responseAudio = document.getElementById('responseAudio');
+          responseAudio.src = data.audio_url;
+          responseAudio.play();
+          
+          // Show success message and reload chat history
+          showStatus('AI response received! Playing audio...', 'success');
+          loadChatHistory();
+          
+          // Set up automatic recording after audio playback
+          responseAudio.onended = function() {
+            showStatus('Response finished. Ready for your next message!', 'success');
+            setTimeout(() => {
+              hideStatus();
+            }, 3000);
+          };
+          
+        } else {
+          const detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          showStatus('Failed: ' + detail, 'error');
+        }
+      } catch (err) {
+        showStatus('Request failed: ' + err.message, 'error');
+      }
+    }
+
+    function showStatus(message, type = 'success') {
+      const statusDiv = document.getElementById('statusMessage');
+      statusDiv.textContent = message;
+      statusDiv.className = `status-message ${type}`;
+      statusDiv.style.display = 'block';
+    }
+
+    function hideStatus() {
+      document.getElementById('statusMessage').style.display = 'none';
+    }
+
+    async function loadVoices() {
+      const select = document.getElementById("voiceSelect");
+      select.innerHTML = '<option value="" disabled selected>Loading voices...</option>';
+      try {
+        const res = await fetch("/voices");
+        const data = await res.json();
+        let voices = data.voices || data.data || data;
+        if (Array.isArray(voices) && voices.length > 0) {
+          select.innerHTML = '<option value="" disabled selected>Select a voice...</option>';
+          voices.forEach((v, idx) => {
+            const id = v.voiceId || v.voice_id || v.id || v.name;
+            const label = v.displayName || v.display_name || v.name || v.voiceId || id;
+            if (id) {
+              const opt = document.createElement('option');
+              opt.value = id;
+              opt.textContent = label + (v.locale ? ` (${v.locale})` : '');
+              select.appendChild(opt);
+            }
+          });
+        } else if (data.detail) {
+          select.innerHTML = `<option value="" disabled>Error: ${data.detail}</option>`;
+        } else {
+          select.innerHTML = '<option value="" disabled>No voices found</option>';
+        }
+      } catch (e) {
+        select.innerHTML = '<option value="" disabled>Error loading voices</option>';
+      }
+    }
+  </script>
+</body>
+</html>
+
