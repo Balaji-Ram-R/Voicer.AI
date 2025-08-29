@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Audio Test - Voicer.AI</title>
+    <style>
+        body {
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 3rem;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 2rem;
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .description {
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 3rem;
+            line-height: 1.6;
+        }
+
+        .record-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.4);
+            margin: 2rem 0;
+        }
+
+        .record-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(255, 107, 107, 0.6);
+        }
+
+        .record-button.recording {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            animation: recordingPulse 1.5s ease-in-out infinite;
+            box-shadow: 0 0 50px rgba(239, 68, 68, 0.8);
+        }
+
+        @keyframes recordingPulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 0 50px rgba(239, 68, 68, 0.8);
+            }
+            50% { 
+                transform: scale(1.05);
+                box-shadow: 0 0 80px rgba(239, 68, 68, 1);
+            }
+        }
+
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            backdrop-filter: blur(10px);
+        }
+
+        .status.success {
+            background: rgba(34, 197, 94, 0.2);
+            border-color: rgba(34, 197, 94, 0.4);
+        }
+
+        .status.error {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+        }
+
+        .status.info {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.4);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .back-link {
+            margin-top: 2rem;
+        }
+
+        .back-link a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .back-link a:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Streaming Audio Test</h1>
+        <p class="description">
+            This page tests streaming audio recording over WebSockets. 
+            Audio data is sent to the server in real-time chunks and saved to a file.
+        </p>
+
+        <button id="recordButton" class="record-button" onclick="toggleRecording()">
+            Start Recording
+        </button>
+
+        <div id="status" class="status" style="display: none;"></div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-label">Chunks Sent</div>
+                <div class="stat-value" id="chunksSent">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Total Bytes</div>
+                <div class="stat-value" id="totalBytes">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Connection Status</div>
+                <div class="stat-value" id="connectionStatus">Disconnected</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Recording Time</div>
+                <div class="stat-value" id="recordingTime">0s</div>
+            </div>
+        </div>
+
+        <div class="back-link">
+            <a href="/">← Back to Main App</a>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let websocket;
+        let isRecording = false;
+        let recordingStartTime;
+        let chunksSent = 0;
+        let totalBytes = 0;
+        let recordingInterval;
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+        }
+
+        function hideStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+
+        function updateStats() {
+            document.getElementById('chunksSent').textContent = chunksSent;
+            document.getElementById('totalBytes').textContent = formatBytes(totalBytes);
+            
+            if (isRecording && recordingStartTime) {
+                const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                document.getElementById('recordingTime').textContent = `${elapsed}s`;
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function connectWebSocket() {
+            try {
+                websocket = new WebSocket(`ws://${window.location.host}/ws/audio`);
+                
+                websocket.onopen = function() {
+                    document.getElementById('connectionStatus').textContent = 'Connected';
+                    document.getElementById('connectionStatus').style.color = '#4ade80';
+                    showStatus('WebSocket connected successfully!', 'success');
+                };
+
+                websocket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'audio_chunk_received') {
+                            showStatus(`Chunk received: ${data.chunk_size} bytes`, 'success');
+                        }
+                    } catch (e) {
+                        console.log('Received message:', event.data);
+                    }
+                };
+
+                websocket.onclose = function() {
+                    document.getElementById('connectionStatus').textContent = 'Disconnected';
+                    document.getElementById('connectionStatus').style.color = '#ef4444';
+                    showStatus('WebSocket connection closed', 'error');
+                };
+
+                websocket.onerror = function(error) {
+                    document.getElementById('connectionStatus').textContent = 'Error';
+                    document.getElementById('connectionStatus').style.color = '#ef4444';
+                    showStatus('WebSocket error occurred', 'error');
+                    console.error('WebSocket error:', error);
+                };
+
+            } catch (error) {
+                showStatus('Failed to connect WebSocket: ' + error.message, 'error');
+            }
+        }
+
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                showStatus('WebSocket not connected. Connecting...', 'info');
+                connectWebSocket();
+                setTimeout(() => {
+                    if (websocket.readyState === WebSocket.OPEN) {
+                        startRecording();
+                    } else {
+                        showStatus('Failed to connect WebSocket', 'error');
+                    }
+                }, 1000);
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'audio/webm;codecs=opus'
+                    });
+
+                    // Reset stats
+                    chunksSent = 0;
+                    totalBytes = 0;
+                    recordingStartTime = Date.now();
+                    updateStats();
+
+                    // Start recording
+                    mediaRecorder.start(100); // Send chunks every 100ms
+
+                    isRecording = true;
+                    updateRecordButton();
+                    showStatus('Recording started! Audio is being streamed to server...', 'success');
+
+                    // Update stats every second
+                    recordingInterval = setInterval(updateStats, 1000);
+
+                    mediaRecorder.ondataavailable = async (event) => {
+                        if (event.data.size > 0) {
+                            try {
+                                // Convert blob to array buffer and send over WebSocket
+                                const arrayBuffer = await event.data.arrayBuffer();
+                                websocket.send(arrayBuffer);
+                                
+                                chunksSent++;
+                                totalBytes += arrayBuffer.byteLength;
+                                updateStats();
+                                
+                            } catch (error) {
+                                console.error('Error sending audio chunk:', error);
+                                showStatus('Error sending audio chunk: ' + error.message, 'error');
+                            }
+                        }
+                    };
+
+                    mediaRecorder.onstop = () => {
+                        isRecording = false;
+                        updateRecordButton();
+                        clearInterval(recordingInterval);
+                        showStatus('Recording stopped. Audio file saved on server.', 'success');
+                        
+                        // Stop all tracks
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                })
+                .catch(err => {
+                    showStatus('Microphone access denied or not available: ' + err.message, 'error');
+                });
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+        }
+
+        function updateRecordButton() {
+            const button = document.getElementById('recordButton');
+            if (isRecording) {
+                button.classList.add('recording');
+                button.textContent = 'Stop Recording';
+            } else {
+                button.classList.remove('recording');
+                button.textContent = 'Start Recording';
+            }
+        }
+
+        // Initialize connection status
+        document.getElementById('connectionStatus').textContent = 'Disconnected';
+        document.getElementById('connectionStatus').style.color = '#ef4444';
+
+        // Connect WebSocket when page loads
+        window.addEventListener('load', function() {
+            showStatus('Ready to record. Click Start Recording to begin streaming audio.', 'info');
+        });
+    </script>
+</body>
+</html>

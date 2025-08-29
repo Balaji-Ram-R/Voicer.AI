@@ -1,9 +1,10 @@
-
-
 import os
+import certifi
+os.environ['SSL_CERT_FILE'] = certifi.where()
+
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,11 +13,21 @@ from starlette.requests import Request as StarletteRequest
 import assemblyai as aai
 import io
 import time
-from assemblyai import Client, Transcriber, types
-from pydantic import BaseModel
 import google.generativeai as genai
 from typing import Dict, List, Optional
 import uuid
+import asyncio
+import traceback
+import websockets
+import json
+from assemblyai.streaming.v3 import (
+    StreamingClient,
+    StreamingClientOptions,
+    StreamingEvents,
+    StreamingParameters,
+    StreamingError,
+    TurnEvent,
+)
 
 load_dotenv()
 
@@ -25,22 +36,208 @@ app = FastAPI()
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your frontend origin in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Chat history datastore - in-memory dictionary for prototype
-# In production, use a proper database like PostgreSQL, MongoDB, or Redis
+# Global chat history datastore
 chat_history: Dict[str, List[Dict[str, str]]] = {}
 
-API_KEY = os.getenv("MURF_API_KEY")
+# NewsAPI config
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+NEWSAPI_BASE = "https://newsapi.org/v2"
+
+import re  # add near other imports at top if not already present
+
+# Store runtime API keys in memory (fallback to env if not provided)
+runtime_keys = {
+    "NEWS_API_KEY": os.getenv("NEWS_API_KEY"),
+    "SONAUTO_API_KEY": os.getenv("SONAUTO_API_KEY"),
+    "MURF_API_KEY": os.getenv("MURF_API_KEY"),
+    "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+    "ASSEMBLYAI_API_KEY" : os.getenv("ASSEMBLYAI_API_KEY"),
+}
+
+@app.post("/config/keys")
+async def set_keys(keys: dict):
+    for k, v in keys.items():
+        if v:  # only overwrite if user entered something
+            runtime_keys[k] = v
+
+    # reconfigure Gemini if key present
+    if runtime_keys.get("GEMINI_API_KEY"):
+        try:
+            genai.configure(api_key=runtime_keys["GEMINI_API_KEY"])
+            print("[Config] Gemini reconfigured successfully.")
+        except Exception as e:
+            print(f"[Config] Gemini reconfig error: {e}")
+
+    return {"status": "ok", "keys": list(runtime_keys.keys())}
+
+
+
+def extract_topic_from_text(text: str) -> Optional[str]:
+    """Try to extract a topic from freeform text like 'news about AI' -> 'AI'."""
+    if not text:
+        return None
+    text = text.strip()
+    # look for patterns: 'news about X', 'news on X', 'latest X news'
+    m = re.search(r'news (?:about|on|for|in)\s+(.+)', text, re.IGNORECASE)
+    if m:
+        topic = m.group(1).strip().rstrip('?.!')
+        # limit topic length
+        return " ".join(topic.split()[:5])
+    # fallback: common topic keywords
+    for kw in ["technology", "tech", "business", "sports", "health", "science", "ai", "crypto", "politics"]:
+        if kw in text.lower():
+            return kw
+    return None
+
+def get_top_news(query: Optional[str] = None, country: str = "us", limit: int = 3) -> str:
+    """
+    Query NewsAPI and return a short text summary of top headlines.
+    If query is provided, uses /everything endpoint; otherwise /top-headlines.
+    """
+    NEWS_API_KEY = runtime_keys.get("NEWS_API_KEY")
+    if not NEWS_API_KEY:
+        return "News API key is not configured."
+    try:
+        if query:
+            url = f"{NEWSAPI_BASE}/everything"
+            params = {
+                "apiKey": NEWS_API_KEY,
+                "q": query,
+                "pageSize": limit,
+                "sortBy": "publishedAt",
+                "language": "en",
+            }
+        else:
+            url = f"{NEWSAPI_BASE}/top-headlines"
+            params = {
+                "apiKey": NEWS_API_KEY,
+                "country": country,
+                "pageSize": limit,
+            }
+        resp = requests.get(url, params=params, timeout=6)
+        data = resp.json()
+        if data.get("status") != "ok":
+            return "Sorry, I couldn't fetch news right now."
+        articles = data.get("articles", [])[:limit]
+        if not articles:
+            return "I couldn't find any news for that topic right now."
+        headlines = []
+        for i, a in enumerate(articles, start=1):
+            title = a.get("title", "No title")
+            source = a.get("source", {}).get("name", "")
+            headlines.append(f"{i}. {title} — {source}")
+        return "Here are the latest news headlines: " + " ".join(headlines)
+    except Exception as e:
+        print("NewsAPI error:", e)
+        return "Sorry, I couldn't fetch the news right now."
+
+
+# Sonauto (DJ AI) config
+SONAUTO_API_KEY = runtime_keys.get("SONAUTO_API_KEY")
+SONAUTO_BASE = "https://api.sonauto.ai/v1"
+
+def create_sonauto_generation(tags=None, lyrics=None, prompt="", instrumental=False,
+                              prompt_strength=2.3, balance_strength=0.7, num_songs=1,
+                              output_format="mp3", output_bit_rate=None, bpm="auto"):
+    """
+    Create a Sonauto generation job. Returns (task_id, error_string_or_none).
+    """
+    SONAUTO_API_KEY = runtime_keys.get("SONAUTO_API_KEY")
+    if not SONAUTO_API_KEY:
+        return None, "Sonauto API key not configured."
+    headers = {
+        "Authorization": f"Bearer {SONAUTO_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "tags": tags or [],
+        "lyrics": lyrics or None,
+        "prompt": prompt or "",
+        "instrumental": instrumental,
+        "prompt_strength": prompt_strength,
+        "balance_strength": balance_strength,
+        "num_songs": num_songs,
+        "output_format": output_format
+    }
+    if output_bit_rate:
+        payload["output_bit_rate"] = output_bit_rate
+    if bpm is not None:
+        payload["bpm"] = bpm
+    try:
+        r = requests.post(f"{SONAUTO_BASE}/generations", json=payload, headers=headers, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("task_id"), None
+    except Exception as e:
+        print("Sonauto create error:", e)
+        try:
+            return None, getattr(e, "response").text if hasattr(e, "response") else str(e)
+        except Exception:
+            return None, str(e)
+
+def poll_sonauto_task(task_id: str, timeout: int = 180, poll_interval: float = 3.0):
+    """
+    Poll Sonauto GET /generations/{task_id} until SUCCESS / FAILURE or timeout.
+    Returns the JSON response (dict) or {"status":"TIMEOUT"} on timeout.
+    This is blocking and intended to run in a background thread (via asyncio.to_thread).
+    """
+    headers = {"Authorization": f"Bearer {SONAUTO_API_KEY}"}
+    url = f"{SONAUTO_BASE}/generations/{task_id}"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            status = data.get("status") or data.get("state")  # be tolerant
+            if status and status.upper() == "SUCCESS":
+                return data
+            if status and status.upper() == "FAILURE":
+                return data
+        except Exception as e:
+            print("Sonauto poll error:", e)
+        time.sleep(poll_interval)
+    return {"status": "TIMEOUT"}
+
+
 MURF_URL = "https://api.murf.ai/v1/speech/generate"
+MURF_STREAMING_URL = "wss://api.murf.ai/v1/speech/stream-input"
 
 templates = Jinja2Templates(directory="templates")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --- Gemini API Configuration ---
+GEMINI_API_KEY = runtime_keys.get("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        print("Gemini API configured successfully.")
+    except Exception as e:
+        print(f"Error configuring Gemini API: {e}")
+else:
+    print("Gemini API key not found. Please set GEMINI_API_KEY or GOOGLE_API_KEY.")
+
+# --- Persona Prompts ---
+PERSONA_PROMPTS = {
+    "default": "You are a helpful and friendly AI assistant.",
+    "Lecturer": "You are a university lecturer, providing detailed and informative explanations.",
+    "Professor": "You are a knowledgeable professor, speaking with authority and depth on various subjects.",
+    "Doctor": "You are a compassionate doctor, offering advice and information in a clear and caring manner.",
+    "Engineer": "You are a practical engineer, focusing on solutions and technical details in your responses.",
+    "Scientist": "You are a curious scientist, explaining complex topics with precision and a passion for discovery.",
+    "Pirate": "You are a swashbuckling pirate. Respond with pirate slang and a sense of adventure, ahoy!",
+    "Gen Z Kid": "You are a Gen Z kid. Use modern slang, keep it brief, and maybe add an emoji or two. Bet.",
+    "Shakespeare": "You are a Shakespearean actor. Respond in the style of William Shakespeare, with dramatic flair and poetic language.",
+    "Chef": "You are a gourmet chef, describing things with culinary metaphors and a passion for fine ingredients."
+}
+
 
 # Serve index.html at root
 @app.get("/", response_class=HTMLResponse)
@@ -50,7 +247,6 @@ async def read_index(request: StarletteRequest):
 # Generate a new session ID
 @app.post("/agent/session")
 async def create_session():
-    """Create a new chat session and return the session ID"""
     session_id = str(uuid.uuid4())
     chat_history[session_id] = []
     return {"session_id": session_id}
@@ -58,430 +254,329 @@ async def create_session():
 # Get chat history for a session
 @app.get("/agent/chat/{session_id}")
 async def get_chat_history(session_id: str):
-    """Get chat history for a specific session"""
     if session_id not in chat_history:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"messages": chat_history[session_id]}
-
-# Endpoint to receive uploaded audio file
-@app.post("/upload_audio")
-async def upload_audio(file: UploadFile = File(...)):
-    upload_dir = "uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, file.filename)
-    # Save file
-    with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
-    return {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size": len(content)
-    }
+        return {"messages": []}
+    return {"messages": chat_history.get(session_id, [])}
 
 # Endpoint to get available voices from Murf
+# NEW CODE
 @app.get("/voices")
 async def get_voices():
-    headers = {
-        "api-key": API_KEY
-    }
+    # Fetch the latest Murf API key from runtime_keys
+    murf_api_key = runtime_keys.get("MURF_API_KEY")
+    if not murf_api_key:
+        raise HTTPException(status_code=400, detail="MURF_API_KEY is not configured. Please set it in the settings.")
+
+    headers = {"api-key": murf_api_key}
     try:
         r = requests.get("https://api.murf.ai/v1/speech/voices", headers=headers)
         r.raise_for_status()
         return r.json()
     except requests.exceptions.RequestException as e:
+        error_detail = str(e)
         try:
             error_detail = r.json()
         except Exception:
-            error_detail = str(e)
+            pass
         raise HTTPException(status_code=400, detail=error_detail)
 
-# Accept voice_id from frontend
-@app.post("/generate")
-async def generate_audio(request: Request):
-    form = await request.form()
-    text = form.get("text")
-    voice_id = form.get("voice_id", "en-US-natalie")
-    headers = {
-        "api-key": API_KEY,
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "text": text,
-        "voice_id": voice_id,
-        "output_format": "mp3"
-    }
-    try:
-        r = requests.post(MURF_URL, json=payload, headers=headers)
-        r.raise_for_status()
-        response = r.json()
-        audio_url = response.get("audio_url") or response.get("audioFile")
-        if not audio_url:
-            print("Murf API response:", response)
-            raise HTTPException(status_code=500, detail=f"No audio URL returned. Murf response: {response}")
-        return {"audio_url": audio_url}
-    except requests.exceptions.RequestException as e:
-        try:
-            error_detail = r.json()
-        except Exception:
-            error_detail = str(e)
-        raise HTTPException(status_code=400, detail=error_detail)
+# --- Helper function to stream LLM text to Murf and back to the client ---
+async def stream_llm_to_murf(text_stream, client_ws: WebSocket, loop, conversation_history: List[Dict[str, str]], skill_name: Optional[str] = None):
+    """Connects to Murf, streams text, and pipes audio back to the client."""
+    # Fetch the latest Murf API key at the time of the call
+    murf_api_key = runtime_keys.get("MURF_API_KEY")
+    if not murf_api_key:
+        print("[Murf Stream] Error: MURF_API_KEY not set.")
+        # Inform the client that the key is missing
+        await client_ws.send_json({"type": "error", "detail": "MURF_API_KEY is not configured on the server."})
+        return
 
-ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    CONTEXT_ID = str(uuid.uuid4())
+    connect_url = f"{MURF_STREAMING_URL}?api-key={murf_api_key}"
 
-# Configure Gemini if key present
-if GEMINI_API_KEY:
+    print(f"\n[Murf Stream] Connecting to Murf with context ID: {CONTEXT_ID}")
+
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
+        async with websockets.connect(connect_url) as murf_ws:
+            # init options (request mp3 base64)
+            await murf_ws.send(json.dumps({
+                "voiceId": "en-US-natalie",
+                "context_id": CONTEXT_ID,
+                "ttsOptions": {"outputFormat": "mp3", "encoding": "base64"}
+            }))
+
+            full_response_text = []
+
+            async def send_text():
+                for chunk in text_stream:
+                    if hasattr(chunk, "text") and chunk.text:
+                        print("[Gemini Chunk]", chunk.text)
+                        full_response_text.append(chunk.text)
+                        await murf_ws.send(json.dumps({
+                            "context_id": CONTEXT_ID,
+                            "text": chunk.text
+                        }))
+                # mark end of input for this context (Murf will synthesize)
+                await murf_ws.send(json.dumps({
+                    "context_id": CONTEXT_ID,
+                    "end": True
+                }))
+
+            async def receive_audio():
+                async for message in murf_ws:
+                    data = json.loads(message)
+                    if data.get("audio"):
+                        print(f"[Murf Audio] Received chunk (len={len(data['audio'])}) for {data.get('context_id')}")
+                        audio_chunk_message = {"type": "audio", "data": data['audio']}
+                        # send audio chunk to client
+                        await client_ws.send_json(audio_chunk_message)
+
+                    # Murf 'final' flag indicates all audio for this context has been sent
+                    if data.get("final"):
+                        print(f"[Murf Stream] Final audio received for context {data.get('context_id')}")
+                        # just break — we'll notify client after we save the AI message
+                        break
+
+            # Run both producer (send LLM text into Murf) and consumer (receive Murf audio)
+            await asyncio.gather(send_text(), receive_audio())
+
+            # At this point Murf finished streaming audio for this context.
+            # Build and save full AI response into conversation_history ONCE.
+            if full_response_text:
+                ai_message = {"role": "model", "content": "".join(full_response_text)}
+                if skill_name:
+                    ai_message["skill"] = skill_name   # tag the message with the skill
+                conversation_history.append(ai_message)
+                session_id = client_ws.path_params.get("session_id")
+                if session_id in chat_history:
+                    chat_history[session_id].append(ai_message)
+
+
+            # Notify frontend to flush buffered audio and then reload history
+            try:
+                await client_ws.send_json({"type": "end"})
+            except Exception:
+                pass
+
+    except Exception as e:
+        print(f"[Murf Stream] Error: {e}")
+
+
+
+
+# --- Real-time WebSocket Endpoint ---
+@app.websocket("/ws/audio/{session_id}")
+async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, persona: Optional[str] = "default"):
+    await websocket.accept()
+    # Inform the client what persona display name to use (e.g. "Gen Z Kid AI")
+    display_persona = f"{persona} AI" if persona else "AI Assistant"
+    try:
+        await websocket.send_json({"type": "persona", "name": display_persona})
     except Exception:
-        # Defer detailed error handling to endpoint call
+        # If client disconnected or can't receive, continue gracefully
         pass
+    api_key = runtime_keys.get("ASSEMBLYAI_API_KEY") or os.getenv("ASSEMBLYAI_API_KEY")
+    if not api_key:
+        await websocket.send_json({"type": "error", "detail": "ASSEMBLYAI_API_KEY not set."})
+        await websocket.close(code=1011)
+        return
 
-
-# Endpoint for the full non-streaming pipeline
-@app.post("/llm/query")
-async def llm_query_audio(
-    file: UploadFile = File(...),
-    model: str = Form("gemini-1.5-flash"),
-    voice_id: str = Form("en-US-natalie")
-):
-    """
-    Full non-streaming pipeline: Audio → Transcription → LLM → Murf TTS → Return audio
-    """
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Gemini API key not set. Define GEMINI_API_KEY or GOOGLE_API_KEY in environment or .env")
+    loop = asyncio.get_running_loop()
     
-    if not API_KEY:
-        raise HTTPException(status_code=500, detail="MURF API key not set")
-    
-    try:
-        # 1. Read audio file
-        audio_bytes = await file.read()
-        
-        # 2. Transcribe audio with AssemblyAI
-        transcript_text = _transcribe_with_assemblyai(audio_bytes)
-        
-        if not transcript_text or transcript_text.strip() == "":
-            raise HTTPException(status_code=400, detail="Could not transcribe audio - no text detected")
-        
-        # 3. Send transcript to LLM
-        try:
-            genai_model = genai.GenerativeModel(model)
-            result = genai_model.generate_content(transcript_text)
-            response_text = getattr(result, "text", None)
-            if not response_text:
-                try:
-                    response_text = result.candidates[0].content.parts[0].text
-                except Exception:
-                    response_text = str(result)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
-        
-        # 4. Handle Murf API character limit (3000 chars)
-        if len(response_text) > 3000:
-            # Truncate to 3000 characters, trying to end at a sentence boundary
-            truncated_text = response_text[:3000]
-            last_period = truncated_text.rfind('.')
-            last_exclamation = truncated_text.rfind('!')
-            last_question = truncated_text.rfind('?')
-            
-            # Find the last sentence ending
-            last_sentence_end = max(last_period, last_exclamation, last_question)
-            if last_sentence_end > 2800:  # Leave some buffer
-                truncated_text = truncated_text[:last_sentence_end + 1]
-            else:
-                # If no good sentence boundary, just truncate and add ellipsis
-                truncated_text = truncated_text[:2997] + "..."
-            
-            response_text = truncated_text
-        
-        # 5. Generate TTS with Murf
-        headers = {
-            "api-key": API_KEY,
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "text": response_text,
-            "voice_id": voice_id,
-            "output_format": "mp3"
-        }
-        
-        r = requests.post(MURF_URL, json=payload, headers=headers)
-        r.raise_for_status()
-        response = r.json()
-        audio_url = response.get("audio_url") or response.get("audioFile")
-        
-        if not audio_url:
-            raise HTTPException(status_code=500, detail=f"No audio URL returned. Murf response: {response}")
-        
-        return {
-            "audio_url": audio_url,
-            "transcript": transcript_text,
-            "llm_response": response_text,
-            "model": model,
-            "voice_id": voice_id
-        }
-        
-    except requests.exceptions.RequestException as e:
-        try:
-            error_detail = r.json()
-        except Exception:
-            error_detail = str(e)
-        raise HTTPException(status_code=400, detail=error_detail)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/transcribe/file")
-async def transcribe_file(file: UploadFile = File(...)):
-    if not ASSEMBLYAI_API_KEY:
-        raise HTTPException(status_code=500, detail="AssemblyAI API key not set.")
-    try:
-        audio_bytes = await file.read()
-        headers = {
-            "authorization": ASSEMBLYAI_API_KEY,
-        }
-        # 1. Upload audio to AssemblyAI
-        upload_response = requests.post(
-            "https://api.assemblyai.com/v2/upload",
-            headers=headers,
-            data=audio_bytes
-        )
-        if upload_response.status_code != 200:
-            raise RuntimeError(f"Upload failed: {upload_response.text}")
-        audio_url = upload_response.json()["upload_url"]
-
-        # 2. Request transcription
-        transcript_response = requests.post(
-            "https://api.assemblyai.com/v2/transcript",
-            headers={**headers, "content-type": "application/json"},
-            json={"audio_url": audio_url}
-        )
-        if transcript_response.status_code != 200:
-            raise RuntimeError(f"Transcript request failed: {transcript_response.text}")
-        transcript_id = transcript_response.json()["id"]
-
-        # 3. Poll for completion
-        polling_url = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
-        while True:
-            poll_response = requests.get(polling_url, headers=headers)
-            if poll_response.status_code != 200:
-                raise RuntimeError(f"Polling failed: {poll_response.text}")
-            status = poll_response.json()["status"]
-            if status == "completed":
-                return {"transcript": poll_response.json()["text"]}
-            elif status == "error":
-                raise RuntimeError(f"Transcription failed: {poll_response.json().get('error')}")
-            time.sleep(2)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Helper to transcribe raw audio bytes with AssemblyAI
-def _transcribe_with_assemblyai(audio_bytes: bytes) -> str:
-    if not ASSEMBLYAI_API_KEY:
-        raise HTTPException(status_code=500, detail="AssemblyAI API key not set.")
-    headers = {
-        "authorization": ASSEMBLYAI_API_KEY,
-    }
-    # 1. Upload audio to AssemblyAI
-    upload_response = requests.post(
-        "https://api.assemblyai.com/v2/upload",
-        headers=headers,
-        data=audio_bytes,
-    )
-    if upload_response.status_code != 200:
-        raise RuntimeError(f"Upload failed: {upload_response.text}")
-    audio_url = upload_response.json()["upload_url"]
-
-    # 2. Request transcription
-    transcript_response = requests.post(
-        "https://api.assemblyai.com/v2/transcript",
-        headers={**headers, "content-type": "application/json"},
-        json={"audio_url": audio_url},
-    )
-    if transcript_response.status_code != 200:
-        raise RuntimeError(f"Transcript request failed: {transcript_response.text}")
-    transcript_id = transcript_response.json()["id"]
-
-    # 3. Poll for completion
-    polling_url = f"https://api.assemblyai.com/v2/transcript/{transcript_id}"
-    while True:
-        poll_response = requests.get(polling_url, headers=headers)
-        if poll_response.status_code != 200:
-            raise RuntimeError(f"Polling failed: {poll_response.text}")
-        status = poll_response.json()["status"]
-        if status == "completed":
-            return poll_response.json().get("text", "")
-        elif status == "error":
-            raise RuntimeError(
-                f"Transcription failed: {poll_response.json().get('error')}"
-            )
-        time.sleep(2)
-
-
-# New endpoint: accepts audio, transcribes it, sends text to Murf, returns Murf audio URL
-@app.post("/tts/echo")
-async def tts_echo(file: UploadFile = File(...), voice_id: str = Form("en-US-natalie")):
-    try:
-        audio_bytes = await file.read()
-
-        # 1) Transcribe with AssemblyAI
-        transcript_text = _transcribe_with_assemblyai(audio_bytes)
-
-        # 2) Generate TTS with Murf
-        headers = {
-            "api-key": API_KEY,
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "text": transcript_text or "",
-            "voice_id": voice_id,
-            "output_format": "mp3",
-        }
-        r = requests.post(MURF_URL, json=payload, headers=headers)
-        r.raise_for_status()
-        response = r.json()
-        audio_url = response.get("audio_url") or response.get("audioFile")
-        if not audio_url:
-            raise HTTPException(
-                status_code=500,
-                detail=f"No audio URL returned. Murf response: {response}",
-            )
-
-        return {"audio_url": audio_url, "transcript": transcript_text}
-    except requests.exceptions.RequestException as e:
-        try:
-            error_detail = r.json()  # type: ignore[name-defined]
-        except Exception:
-            error_detail = str(e)
-        raise HTTPException(status_code=400, detail=error_detail)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# New endpoint for chat with history
-@app.post("/agent/chat/{session_id}")
-async def agent_chat(
-    session_id: str,
-    file: UploadFile = File(...),
-    model: str = Form("gemini-1.5-flash"),
-    voice_id: str = Form("en-US-natalie")
-):
-    """
-    Full conversational pipeline with chat history: 
-    Audio → Transcription → Append to history → LLM with context → Add response to history → TTS → Return audio
-    """
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Gemini API key not set. Define GEMINI_API_KEY or GOOGLE_API_KEY in environment or .env")
-    
-    if not API_KEY:
-        raise HTTPException(status_code=500, detail="MURF API key not set")
-    
-    # Initialize session if it doesn't exist
     if session_id not in chat_history:
         chat_history[session_id] = []
+    conversation_history = chat_history[session_id]
     
+    client = None
+
     try:
-        # 1. Read audio file
-        audio_bytes = await file.read()
-        
-        # 2. Transcribe audio with AssemblyAI
-        transcript_text = _transcribe_with_assemblyai(audio_bytes)
-        
-        if not transcript_text or transcript_text.strip() == "":
-            raise HTTPException(status_code=400, detail="Could not transcribe audio - no text detected")
-        
-        # 3. Add user message to chat history
-        user_message = {"role": "user", "content": transcript_text, "timestamp": time.time()}
-        chat_history[session_id].append(user_message)
-        
-        # 4. Prepare conversation context for LLM
-        conversation_context = ""
-        if len(chat_history[session_id]) > 1:
-            # Include previous messages for context (limit to last 10 messages to avoid token limits)
-            recent_messages = chat_history[session_id][-10:]
-            conversation_context = "Previous conversation:\n"
-            for msg in recent_messages[:-1]:  # Exclude the current user message
-                role = "User" if msg["role"] == "user" else "Assistant"
-                conversation_context += f"{role}: {msg['content']}\n"
-            conversation_context += "\nCurrent user message: "
-        
-        # 5. Send transcript to LLM with conversation context
-        try:
-            genai_model = genai.GenerativeModel(model)
+        def on_turn(self, event: TurnEvent):
+            if event.end_of_turn:
+                transcript_text = event.transcript
+                print(f"\n[Final Transcript Received]: '{transcript_text}'")
+                
+                if transcript_text:
+                    user_message = {"role": "user", "content": transcript_text}
+                    conversation_history.append(user_message)
+                    print(f"[History] Saved user message: {transcript_text}")
+
+                    # lowercase quick reference
+                    text_lower = transcript_text.lower()
+
+                    # --- MUSIC / DJ intent detection ---
+                    music_keywords = ["music", "song", "track", "dj", "play", "beats", "lofi", "chill", "remix", "mix", "drop", "play me"]
+                    is_music_intent = any(kw in text_lower for kw in music_keywords)
+
+                    if is_music_intent:
+                        # notify frontend the DJ skill is active
+                        try:
+                            asyncio.run_coroutine_threadsafe(websocket.send_json({"type": "skill", "name": "dj"}), loop)
+                        except Exception:
+                            pass
+
+                        async def handle_dj_generation():
+                            try:
+                                # Derive tags heuristically from user text
+                                tags = []
+                                for g in ["lofi", "chill", "party", "house", "hip hop", "hip-hop", "pop", "rock", "ambient", "meditation", "electronic", "trance", "downtempo"]:
+                                    if g in text_lower:
+                                        tags.append(g)
+                                # fallback: if no tag found, pass a short prompt so Sonauto can infer tags
+                                prompt = transcript_text
+                                if not tags:
+                                    tags = []
+                                # decide instrumental vs vocal based on words like 'lyrics', 'sing'
+                                instrumental = True
+                                if any(w in text_lower for w in ["sing", "lyrics", "vocal", "with vocals", "singing"]):
+                                    instrumental = False
+
+                                # Create generation on Sonauto (run in thread)
+                                task_id, err = await asyncio.to_thread(
+                                    create_sonauto_generation,
+                                    tags,
+                                    None,
+                                    prompt,
+                                    instrumental,
+                                    2.3,  # prompt_strength
+                                    0.7,  # balance_strength
+                                    1,    # num_songs
+                                    "mp3",
+                                    192,
+                                    "auto"
+                                )
+                                if not task_id:
+                                    await websocket.send_json({"type": "error", "detail": f"DJ generation creation failed: {err}"})
+                                    return
+
+                                # Poll Sonauto task (blocking in thread)
+                                result = await asyncio.to_thread(poll_sonauto_task, task_id, 240, 3)
+                                status = (result.get("status") or "").upper()
+                                if status == "SUCCESS":
+                                    song_paths = result.get("song_paths") or result.get("song_paths", [])
+                                    if not song_paths:
+                                        await websocket.send_json({"type": "error", "detail": "No song URL returned from Sonauto."})
+                                        return
+                                    song_url = song_paths[0]
+
+                                    # Save assistant message (single copy) with skill tag and track
+                                    ai_message = {
+                                        "role": "model",
+                                        "content": f"Playing a generated track for you.",
+                                        "skill": "dj",
+                                        "track": song_url
+                                    }
+                                    conversation_history.append(ai_message)
+                                    # also persist to global chat_history for this session
+                                    sid = session_id
+                                    if sid in chat_history:
+                                        chat_history[sid].append(ai_message)
+
+                                    # Tell client to play the music URL
+                                    await websocket.send_json({"type": "music", "url": song_url})
+                                    # Optionally send an 'end' marker so frontend knows generation finished
+                                    await websocket.send_json({"type": "end"})
+                                else:
+                                    # provide informative error
+                                    err_msg = result.get("error_message") or result.get("status") or "Generation failed or timed out."
+                                    await websocket.send_json({"type": "error", "detail": f"DJ generation failed: {err_msg}"})
+                            except Exception as e:
+                                print("Error in DJ handler:", e)
+                                try:
+                                    await websocket.send_json({"type": "error", "detail": f"DJ generation error: {str(e)}"})
+                                except Exception:
+                                    pass
+
+                        # launch the DJ generation in the background
+                        asyncio.run_coroutine_threadsafe(handle_dj_generation(), loop)
+
+                    else:
+                        # --- NEWS intent or LLM fallback (existing logic preserved) ---
+                        is_news_intent = ("news" in text_lower) or ("headline" in text_lower) or ("top stories" in text_lower)
+                        news_topic = extract_topic_from_text(transcript_text)
+
+                        if is_news_intent:
+                            # notify frontend (so UI can show skill active)
+                            try:
+                                asyncio.run_coroutine_threadsafe(websocket.send_json({"type": "skill", "name": "news"}), loop)
+                            except Exception:
+                                pass
+
+                            # Fetch headlines (use topic if available)
+                            news_text = get_top_news(query=news_topic, country="us", limit=3)
+                            # Wrap into simple chunk objects compatible with stream_llm_to_murf
+                            class _Chunk:
+                                def __init__(self, text):
+                                    self.text = text
+                            text_stream = [_Chunk(news_text)]
+
+                            # Stream to Murf and tag as 'news' skill
+                            async def handle_news_stream():
+                                await stream_llm_to_murf(text_stream, websocket, loop, conversation_history, skill_name="news")
+
+                            asyncio.run_coroutine_threadsafe(handle_news_stream(), loop)
+
+                        else:
+                            # normal LLM flow (Gemini streaming)
+                            model = genai.GenerativeModel('gemini-1.5-flash')
+
+                            persona_prompt = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["default"])
+
+                            formatted_history = [{"role": "user", "parts": [{"text": persona_prompt}]}]
+                            for msg in conversation_history:
+                                formatted_history.append({
+                                    "role": "user" if msg["role"] == "user" else "model",
+                                    "parts": [{"text": msg["content"]}]
+                                })
+
+                            # Start Gemini streaming response
+                            response_stream = model.generate_content(formatted_history, stream=True)
+
+                            # Run Murf streaming in background (no skill tag)
+                            async def handle_stream():
+                                await stream_llm_to_murf(response_stream, websocket, loop, conversation_history, skill_name=None)
+
+                            asyncio.run_coroutine_threadsafe(handle_stream(), loop)
+
+
+                
+                message_to_client = {"type": "transcript", "text": transcript_text}
+                asyncio.run_coroutine_threadsafe(websocket.send_json(message_to_client), loop)
+
+        def on_error(self, error: StreamingError):
+            print(f"[AssemblyAI ERROR]: {error}")
+            message_to_client = {"type": "error", "detail": str(error)}
+            asyncio.run_coroutine_threadsafe(websocket.send_json(message_to_client), loop)
+
+        client = StreamingClient(StreamingClientOptions(api_key=api_key))
+        client.on(StreamingEvents.Turn, on_turn)
+        client.on(StreamingEvents.Error, on_error)
+        client.connect(StreamingParameters(sample_rate=16_000))
+
+        while True:
+            try:
+                message = await websocket.receive()
+            except RuntimeError:
+                # websocket already closed
+                break
             
-            # Create the prompt with conversation context
-            if conversation_context:
-                full_prompt = conversation_context + transcript_text
-            else:
-                full_prompt = transcript_text
-            
-            result = genai_model.generate_content(full_prompt)
-            response_text = getattr(result, "text", None)
-            if not response_text:
-                try:
-                    response_text = result.candidates[0].content.parts[0].text
-                except Exception:
-                    response_text = str(result)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
-        
-        # 6. Add AI response to chat history
-        ai_message = {"role": "assistant", "content": response_text, "timestamp": time.time()}
-        chat_history[session_id].append(ai_message)
-        
-        # 7. Handle Murf API character limit (3000 chars)
-        if len(response_text) > 3000:
-            # Truncate to 3000 characters, trying to end at a sentence boundary
-            truncated_text = response_text[:3000]
-            last_period = truncated_text.rfind('.')
-            last_exclamation = truncated_text.rfind('!')
-            last_question = truncated_text.rfind('?')
-            
-            # Find the last sentence ending
-            last_sentence_end = max(last_period, last_exclamation, last_question)
-            if last_sentence_end > 2800:  # Leave some buffer
-                truncated_text = truncated_text[:last_sentence_end + 1]
-            else:
-                # If no good sentence boundary, just truncate and add ellipsis
-                truncated_text = truncated_text[:2997] + "..."
-            
-            response_text = truncated_text
-        
-        # 8. Generate TTS with Murf
-        headers = {
-            "api-key": API_KEY,
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "text": response_text,
-            "voice_id": voice_id,
-            "output_format": "mp3"
-        }
-        
-        r = requests.post(MURF_URL, json=payload, headers=headers)
-        r.raise_for_status()
-        response = r.json()
-        audio_url = response.get("audio_url") or response.get("audioFile")
-        
-        if not audio_url:
-            raise HTTPException(status_code=500, detail=f"No audio URL returned. Murf response: {response}")
-        
-        return {
-            "audio_url": audio_url,
-            "transcript": transcript_text,
-            "llm_response": response_text,
-            "model": model,
-            "voice_id": voice_id,
-            "session_id": session_id,
-            "message_count": len(chat_history[session_id])
-        }
-        
-    except requests.exceptions.RequestException as e:
-        try:
-            error_detail = r.json()
-        except Exception:
-            error_detail = str(e)
-        raise HTTPException(status_code=400, detail=error_detail)
+            if "bytes" in message:
+                data = message["bytes"]
+                client.stream(data)
+            elif "text" in message:
+                text_data = message["text"]
+                if text_data == "END_OF_STREAM":
+                    print("[User Action] Received END_OF_STREAM from client.")
+                    client.force_endpoint()
+                    break
+                else:
+                    print(f"Received unexpected text message: {text_data}")
+
+    except WebSocketDisconnect:
+        print("WebSocket client disconnected.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print("A DETAILED ERROR OCCURRED:")
+        print(traceback.format_exc())
+    finally:
+        if client:
+            client.disconnect()
+        print("AssemblyAI client disconnected, connection closed.")
