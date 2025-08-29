@@ -424,6 +424,11 @@
     margin-top: 2rem;
   }
 
+  .status-message.info {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+
   </style>
 </head>
 <body>
@@ -521,6 +526,10 @@
         <label for="sonautoKey">Sonauto API Key</label>
         <input type="password" id="sonautoKey" placeholder="Enter your Sonauto API Key">
       </div>
+      <div class="form-group">
+        <label for="newsKey">NewsAPI Key</label>
+        <input type="password" id="newsKey" placeholder="Enter your NewsAPI key">
+      </div>
       <div class="modal-actions">
         <button class="btn" onclick="toggleSettingsModal()">Cancel</button>
         <button class="btn" onclick="saveApiKeys()">Save Keys</button>
@@ -537,6 +546,106 @@
     let ws = null;
     let audioPlayer = null;
     let microphoneStream = null;
+
+    // API Key Management
+    function loadApiKeys() {
+        const keyIds = ['murfKey', 'geminiKey', 'assemblyKey', 'sonautoKey', 'newsKey'];
+        keyIds.forEach(id => {
+            const storedValue = localStorage.getItem(id.toUpperCase());
+            if (storedValue) {
+                document.getElementById(id).value = storedValue;
+            }
+        });
+    }
+
+    function checkRequiredKeys() {
+        const requiredKeys = [
+            'MURF_API_KEY',
+            'GEMINI_API_KEY',
+            'ASSEMBLYAI_API_KEY'
+        ];
+        
+        const missingKeys = requiredKeys.filter(key => 
+            !localStorage.getItem(key)
+        );
+        
+        if (missingKeys.length > 0) {
+            showStatus(
+                'Please configure your API keys in settings before using the app.',
+                'error'
+            );
+            toggleSettingsModal();
+            if (document.getElementById('recordButton')) {
+                document.getElementById('recordButton').disabled = true;
+            }
+            if (document.getElementById('startSessionBtn')) {
+                document.getElementById('startSessionBtn').style.display = 'none';
+            }
+            return false;
+        }
+        return true;
+    }
+
+    async function saveApiKeys() {
+        const keys = {
+            MURF_API_KEY: (document.getElementById('murfKey')?.value || '').trim(),
+            GEMINI_API_KEY: (document.getElementById('geminiKey')?.value || '').trim(),
+            ASSEMBLYAI_API_KEY: (document.getElementById('assemblyKey')?.value || '').trim(),
+            SONAUTO_API_KEY: (document.getElementById('sonautoKey')?.value || '').trim(),
+            NEWS_API_KEY: (document.getElementById('newsKey')?.value || '').trim(),
+        };
+
+        // Check if required keys are provided
+        const requiredKeys = ['MURF_API_KEY', 'GEMINI_API_KEY', 'ASSEMBLYAI_API_KEY'];
+        const missingKeys = requiredKeys.filter(key => !keys[key]);
+        
+        if (missingKeys.length > 0) {
+            showStatus(`Missing required API keys: ${missingKeys.join(', ')}`, 'error');
+            return;
+        }
+
+        // Save to localStorage
+        Object.entries(keys).forEach(([k, v]) => {
+            if (v) localStorage.setItem(k, v);
+        });
+
+        // Send to backend
+        try {
+            const res = await fetch("/config/keys", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(keys),
+            });
+
+            if (!res.ok) {
+                let detail = "Failed to save keys";
+                try { detail = (await res.json()).detail || detail; } catch {}
+                showStatus(detail, 'error');
+                return;
+            }
+
+            // Success - close modal and refresh
+            toggleSettingsModal();
+            showStatus('API Keys saved successfully!', 'success');
+            loadVoices();
+            
+            // Re-enable UI elements
+            if (document.getElementById('recordButton')) {
+                document.getElementById('recordButton').disabled = false;
+            }
+            if (document.getElementById('startSessionBtn')) {
+                document.getElementById('startSessionBtn').style.display = 'block';
+            }
+            
+        } catch (error) {
+            showStatus('Error saving API keys: ' + error.message, 'error');
+        }
+    }
+
+    function toggleSettingsModal() {
+        const modal = document.getElementById('settingsModal');
+        modal.classList.toggle('visible');
+    }
     let inputAudioContext = null;
     let ttsChunkBuffers = [];   // holds Uint8Array chunks from Murf
     let ttsPlayer = null;       // <audio> element
@@ -860,6 +969,35 @@
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
+
+        if (data.type === "progress") {
+          // Show progress message to user
+          showStatus(data.message, 'info');
+          
+          // If it's a completion message, make it disappear after 3 seconds
+          if (data.phase === "complete") {
+            setTimeout(() => hideStatus(), 3000);
+          }
+          return;
+        }
+
+        if (data.type === "error") {
+          console.error("Received error from server:", data.detail);
+          let errorMessage = data.detail;
+          
+          // Add retry message if server indicates retry is possible
+          if (data.retry) {
+            errorMessage += ' You can try your request again.';
+          }
+          
+          showStatus(errorMessage, 'error');
+          
+          // If this was a severe error, stop recording
+          if (!data.retry) {
+            stopRecording();
+          }
+          return;
+        }
 
         // If server sends persona: set persona label used in UI
         if (data.type === "persona" && data.name) {

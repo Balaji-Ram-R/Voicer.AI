@@ -51,14 +51,32 @@ NEWSAPI_BASE = "https://newsapi.org/v2"
 
 import re  # add near other imports at top if not already present
 
-# Store runtime API keys in memory (fallback to env if not provided)
+# Store runtime API keys in memory 
 runtime_keys = {
-    "NEWS_API_KEY": os.getenv("NEWS_API_KEY"),
-    "SONAUTO_API_KEY": os.getenv("SONAUTO_API_KEY"),
-    "MURF_API_KEY": os.getenv("MURF_API_KEY"),
-    "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
-    "ASSEMBLYAI_API_KEY" : os.getenv("ASSEMBLYAI_API_KEY"),
+    "NEWS_API_KEY": None,
+    "SONAUTO_API_KEY": None,
+    "MURF_API_KEY": None,
+    "GEMINI_API_KEY": None,
+    "ASSEMBLYAI_API_KEY": None,
 }
+
+def check_required_keys(operation: str) -> tuple[bool, str]:
+    """Check if required API keys are set for a specific operation."""
+    required_keys = {
+        "voices": ["MURF_API_KEY"],
+        "chat": ["ASSEMBLYAI_API_KEY", "GEMINI_API_KEY", "MURF_API_KEY"],
+        "news": ["NEWS_API_KEY"],
+        "music": ["SONAUTO_API_KEY"]
+    }
+    
+    if operation not in required_keys:
+        return False, f"Unknown operation: {operation}"
+        
+    missing = [k for k in required_keys[operation] if not runtime_keys.get(k)]
+    if missing:
+        return False, f"Missing required API keys: {', '.join(missing)}"
+    
+    return True, ""
 
 @app.post("/config/keys")
 async def set_keys(keys: dict):
@@ -73,6 +91,25 @@ async def set_keys(keys: dict):
             print("[Config] Gemini reconfigured successfully.")
         except Exception as e:
             print(f"[Config] Gemini reconfig error: {e}")
+
+    # Validate NEWS_API_KEY if provided
+    if runtime_keys.get("NEWS_API_KEY"):
+        try:
+            # Test the News API key with a simple request
+            url = f"{NEWSAPI_BASE}/top-headlines"
+            params = {
+                "apiKey": runtime_keys["NEWS_API_KEY"],
+                "country": "us",
+                "pageSize": 1
+            }
+            resp = requests.get(url, params=params, timeout=6)
+            if resp.status_code != 200:
+                print(f"[Config] News API key validation failed: {resp.text}")
+                return {"status": "error", "message": "Invalid News API key"}
+            print("[Config] News API key validated successfully.")
+        except Exception as e:
+            print(f"[Config] News API validation error: {e}")
+            return {"status": "error", "message": f"News API key validation failed: {str(e)}"}
 
     return {"status": "ok", "keys": list(runtime_keys.keys())}
 
@@ -100,9 +137,9 @@ def get_top_news(query: Optional[str] = None, country: str = "us", limit: int = 
     Query NewsAPI and return a short text summary of top headlines.
     If query is provided, uses /everything endpoint; otherwise /top-headlines.
     """
-    NEWS_API_KEY = runtime_keys.get("NEWS_API_KEY")
-    if not NEWS_API_KEY:
-        return "News API key is not configured."
+    ok, error = check_required_keys("news")
+    if not ok:
+        return f"News API is not configured: {error}. Please configure your News API key in settings."
     try:
         if query:
             url = f"{NEWSAPI_BASE}/everything"
@@ -184,26 +221,55 @@ def create_sonauto_generation(tags=None, lyrics=None, prompt="", instrumental=Fa
 def poll_sonauto_task(task_id: str, timeout: int = 180, poll_interval: float = 3.0):
     """
     Poll Sonauto GET /generations/{task_id} until SUCCESS / FAILURE or timeout.
-    Returns the JSON response (dict) or {"status":"TIMEOUT"} on timeout.
+    Returns the JSON response (dict) or error status.
     This is blocking and intended to run in a background thread (via asyncio.to_thread).
     """
-    headers = {"Authorization": f"Bearer {SONAUTO_API_KEY}"}
+    headers = {"Authorization": f"Bearer {runtime_keys['SONAUTO_API_KEY']}"}
     url = f"{SONAUTO_BASE}/generations/{task_id}"
     deadline = time.time() + timeout
+    consecutive_errors = 0
+    max_consecutive_errors = 5  # Give up after 5 consecutive errors
+    
     while time.time() < deadline:
         try:
             r = requests.get(url, headers=headers, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            status = data.get("status") or data.get("state")  # be tolerant
-            if status and status.upper() == "SUCCESS":
-                return data
-            if status and status.upper() == "FAILURE":
-                return data
+            if r.status_code == 500:
+                consecutive_errors += 1
+                print(f"Sonauto server error (attempt {consecutive_errors}):", r.text)
+                if consecutive_errors >= max_consecutive_errors:
+                    return {
+                        "status": "ERROR",
+                        "error_message": "Sonauto server is experiencing issues. Please try again later."
+                    }
+            else:
+                r.raise_for_status()
+                data = r.json()
+                status = data.get("status") or data.get("state")
+                if status:
+                    status = status.upper()
+                    if status == "SUCCESS":
+                        return data
+                    if status == "FAILURE":
+                        return data
+                consecutive_errors = 0  # Reset error counter on successful response
+                
+        except requests.exceptions.RequestException as e:
+            consecutive_errors += 1
+            print(f"Sonauto poll error (attempt {consecutive_errors}):", e)
+            if consecutive_errors >= max_consecutive_errors:
+                return {
+                    "status": "ERROR",
+                    "error_message": "Unable to connect to Sonauto service. Please try again later."
+                }
         except Exception as e:
-            print("Sonauto poll error:", e)
+            print("Unexpected error in Sonauto polling:", e)
+            
         time.sleep(poll_interval)
-    return {"status": "TIMEOUT"}
+    
+    return {
+        "status": "TIMEOUT",
+        "error_message": "The music generation request timed out. Please try again."
+    }
 
 
 MURF_URL = "https://api.murf.ai/v1/speech/generate"
@@ -259,13 +325,13 @@ async def get_chat_history(session_id: str):
     return {"messages": chat_history.get(session_id, [])}
 
 # Endpoint to get available voices from Murf
-# NEW CODE
 @app.get("/voices")
 async def get_voices():
-    # Fetch the latest Murf API key from runtime_keys
-    murf_api_key = runtime_keys.get("MURF_API_KEY")
-    if not murf_api_key:
-        raise HTTPException(status_code=400, detail="MURF_API_KEY is not configured. Please set it in the settings.")
+    ok, error = check_required_keys("voices")
+    if not ok:
+        raise HTTPException(status_code=400, detail=error)
+        
+    murf_api_key = runtime_keys["MURF_API_KEY"]
 
     headers = {"api-key": murf_api_key}
     try:
@@ -341,12 +407,12 @@ async def stream_llm_to_murf(text_stream, client_ws: WebSocket, loop, conversati
             await asyncio.gather(send_text(), receive_audio())
 
             # At this point Murf finished streaming audio for this context.
-            # Build and save full AI response into conversation_history ONCE.
+            # Build and save full AI response into chat history
             if full_response_text:
                 ai_message = {"role": "model", "content": "".join(full_response_text)}
                 if skill_name:
                     ai_message["skill"] = skill_name   # tag the message with the skill
-                conversation_history.append(ai_message)
+                # Add only to chat_history since conversation_history is a reference to it
                 session_id = client_ws.path_params.get("session_id")
                 if session_id in chat_history:
                     chat_history[session_id].append(ai_message)
@@ -368,6 +434,16 @@ async def stream_llm_to_murf(text_stream, client_ws: WebSocket, loop, conversati
 @app.websocket("/ws/audio/{session_id}")
 async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, persona: Optional[str] = "default"):
     await websocket.accept()
+    # Check required keys first
+    ok, error = check_required_keys("chat")
+    if not ok:
+        await websocket.send_json({
+            "type": "error",
+            "detail": "Please configure required API keys in settings: " + error
+        })
+        await websocket.close(code=1011)
+        return
+        
     # Inform the client what persona display name to use (e.g. "Gen Z Kid AI")
     display_persona = f"{persona} AI" if persona else "AI Assistant"
     try:
@@ -375,11 +451,9 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
     except Exception:
         # If client disconnected or can't receive, continue gracefully
         pass
-    api_key = runtime_keys.get("ASSEMBLYAI_API_KEY") or os.getenv("ASSEMBLYAI_API_KEY")
-    if not api_key:
-        await websocket.send_json({"type": "error", "detail": "ASSEMBLYAI_API_KEY not set."})
-        await websocket.close(code=1011)
-        return
+        
+    # Get required API keys
+    assembly_api_key = runtime_keys["ASSEMBLYAI_API_KEY"]
 
     loop = asyncio.get_running_loop()
     
@@ -430,6 +504,13 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
                                 if any(w in text_lower for w in ["sing", "lyrics", "vocal", "with vocals", "singing"]):
                                     instrumental = False
 
+                                # Inform user that generation has started
+                                await websocket.send_json({
+                                    "type": "progress",
+                                    "message": "Starting music generation...",
+                                    "phase": "start"
+                                })
+                                
                                 # Create generation on Sonauto (run in thread)
                                 task_id, err = await asyncio.to_thread(
                                     create_sonauto_generation,
@@ -448,6 +529,13 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
                                     await websocket.send_json({"type": "error", "detail": f"DJ generation creation failed: {err}"})
                                     return
 
+                                # Update user that generation is in progress
+                                await websocket.send_json({
+                                    "type": "progress",
+                                    "message": "Creating your melody... this might take a minute",
+                                    "phase": "generating"
+                                })
+
                                 # Poll Sonauto task (blocking in thread)
                                 result = await asyncio.to_thread(poll_sonauto_task, task_id, 240, 3)
                                 status = (result.get("status") or "").upper()
@@ -457,19 +545,25 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
                                         await websocket.send_json({"type": "error", "detail": "No song URL returned from Sonauto."})
                                         return
                                     song_url = song_paths[0]
+                                elif status == "ERROR":
+                                    error_msg = result.get("error_message", "An unknown error occurred with the music generation")
+                                    print(f"[Sonauto Error] {error_msg}")
+                                    await websocket.send_json({
+                                        "type": "error", 
+                                        "detail": error_msg,
+                                        "retry": True  # Indicates to frontend that the user can retry
+                                    })
 
-                                    # Save assistant message (single copy) with skill tag and track
+                                    # Save assistant message with skill tag and track
                                     ai_message = {
                                         "role": "model",
                                         "content": f"Playing a generated track for you.",
                                         "skill": "dj",
                                         "track": song_url
                                     }
-                                    conversation_history.append(ai_message)
-                                    # also persist to global chat_history for this session
-                                    sid = session_id
-                                    if sid in chat_history:
-                                        chat_history[sid].append(ai_message)
+                                    # Add only to chat_history since conversation_history is a reference to it
+                                    if session_id in chat_history:
+                                        chat_history[session_id].append(ai_message)
 
                                     # Tell client to play the music URL
                                     await websocket.send_json({"type": "music", "url": song_url})
@@ -547,7 +641,7 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
             message_to_client = {"type": "error", "detail": str(error)}
             asyncio.run_coroutine_threadsafe(websocket.send_json(message_to_client), loop)
 
-        client = StreamingClient(StreamingClientOptions(api_key=api_key))
+        client = StreamingClient(StreamingClientOptions(api_key=assembly_api_key))
         client.on(StreamingEvents.Turn, on_turn)
         client.on(StreamingEvents.Error, on_error)
         client.connect(StreamingParameters(sample_rate=16_000))
