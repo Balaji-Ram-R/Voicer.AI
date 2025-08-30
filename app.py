@@ -140,11 +140,17 @@ def get_top_news(query: Optional[str] = None, country: str = "us", limit: int = 
     ok, error = check_required_keys("news")
     if not ok:
         return f"News API is not configured: {error}. Please configure your News API key in settings."
+    
+    # Always use runtime key instead of environment variable
+    news_api_key = runtime_keys.get("NEWS_API_KEY")
+    if not news_api_key:
+        return "News API key not configured. Please set your News API key in settings."
+        
     try:
         if query:
             url = f"{NEWSAPI_BASE}/everything"
             params = {
-                "apiKey": NEWS_API_KEY,
+                "apiKey": news_api_key,
                 "q": query,
                 "pageSize": limit,
                 "sortBy": "publishedAt",
@@ -153,7 +159,7 @@ def get_top_news(query: Optional[str] = None, country: str = "us", limit: int = 
         else:
             url = f"{NEWSAPI_BASE}/top-headlines"
             params = {
-                "apiKey": NEWS_API_KEY,
+                "apiKey": news_api_key,
                 "country": country,
                 "pageSize": limit,
             }
@@ -176,7 +182,6 @@ def get_top_news(query: Optional[str] = None, country: str = "us", limit: int = 
 
 
 # Sonauto (DJ AI) config
-SONAUTO_API_KEY = runtime_keys.get("SONAUTO_API_KEY")
 SONAUTO_BASE = "https://api.sonauto.ai/v1"
 
 def create_sonauto_generation(tags=None, lyrics=None, prompt="", instrumental=False,
@@ -185,11 +190,11 @@ def create_sonauto_generation(tags=None, lyrics=None, prompt="", instrumental=Fa
     """
     Create a Sonauto generation job. Returns (task_id, error_string_or_none).
     """
-    SONAUTO_API_KEY = runtime_keys.get("SONAUTO_API_KEY")
-    if not SONAUTO_API_KEY:
+    sonauto_api_key = runtime_keys.get("SONAUTO_API_KEY")
+    if not sonauto_api_key:
         return None, "Sonauto API key not configured."
     headers = {
-        "Authorization": f"Bearer {SONAUTO_API_KEY}",
+        "Authorization": f"Bearer {sonauto_api_key}",
         "Content-Type": "application/json"
     }
     payload = {
@@ -224,7 +229,14 @@ def poll_sonauto_task(task_id: str, timeout: int = 180, poll_interval: float = 3
     Returns the JSON response (dict) or error status.
     This is blocking and intended to run in a background thread (via asyncio.to_thread).
     """
-    headers = {"Authorization": f"Bearer {runtime_keys['SONAUTO_API_KEY']}"}
+    sonauto_api_key = runtime_keys.get("SONAUTO_API_KEY")
+    if not sonauto_api_key:
+        return {
+            "status": "ERROR",
+            "error_message": "Sonauto API key not configured"
+        }
+    
+    headers = {"Authorization": f"Bearer {sonauto_api_key}"}
     url = f"{SONAUTO_BASE}/generations/{task_id}"
     deadline = time.time() + timeout
     consecutive_errors = 0
@@ -553,17 +565,18 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
                                         "detail": error_msg,
                                         "retry": True  # Indicates to frontend that the user can retry
                                     })
+                                    return
 
-                                    # Save assistant message with skill tag and track
-                                    ai_message = {
-                                        "role": "model",
-                                        "content": f"Playing a generated track for you.",
-                                        "skill": "dj",
-                                        "track": song_url
-                                    }
-                                    # Add only to chat_history since conversation_history is a reference to it
-                                    if session_id in chat_history:
-                                        chat_history[session_id].append(ai_message)
+                                # Save assistant message with skill tag and track
+                                ai_message = {
+                                    "role": "model",
+                                    "content": f"Playing a generated track for you.",
+                                    "skill": "dj",
+                                    "track": song_url
+                                }
+                                # Add only to chat_history since conversation_history is a reference to it
+                                if session_id in chat_history:
+                                    chat_history[session_id].append(ai_message)
 
                                     # Tell client to play the music URL
                                     await websocket.send_json({"type": "music", "url": song_url})
