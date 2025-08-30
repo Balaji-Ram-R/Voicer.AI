@@ -35,14 +35,16 @@ Voicer.AI is a next-generation, full-stack conversational voice agent platform. 
 ---
 
 ## ✨ Features
-- 🎤 **Echo Bot**: Record your voice, transcribe, and play it back as TTS
-- 🗣️ **Voice Selector**: Choose from dozens of Murf voices
-- 🤖 **Conversational Agent**: Chat with an LLM using your voice
-- 📝 **Real-Time Transcription**: See your words appear instantly
-- 🌐 **Modern UI**: Animated, dark-themed, responsive, and beautiful
-- 🛡️ **API-First**: All features accessible via clean REST endpoints
-- 🔒 **Secure**: API keys and secrets managed via `.env`
-- 🧩 **Extensible**: Add new LLMs, TTS, or STT providers easily
+- 🎤 **Voice Interaction**: Real-time speech recognition and natural TTS responses
+- 🎵 **AI Music Generation**: Create custom music tracks using Sonauto AI
+- � **News Integration**: Get latest news updates through voice commands
+- 🗣️ **Multiple Personas**: Choose from various AI personalities (Professor, Doctor, Engineer, etc.)
+- � **Context-Aware Chat**: Persistent conversation history across sessions
+- � **Modern UI**: Dark-themed, animated interface with real-time feedback
+- � **Easy Configuration**: Simple settings modal for API key management
+- 🌐 **WebSocket Support**: Real-time bidirectional communication
+- 🔒 **Secure**: API keys and secrets managed via settings or `.env`
+- 🧩 **Extensible**: Modular architecture for easy feature additions
 
 ---
 
@@ -67,10 +69,14 @@ pip install -r requirements.txt
 ### 4. Set Environment Variables
 Create a `.env` file in the project root with the following:
 ```
-MURF_API_KEY=your_murf_api_key
-ASSEMBLYAI_API_KEY=your_assemblyai_api_key
-GEMINI_API_KEY=your_gemini_api_key  # or GOOGLE_API_KEY
+MURF_API_KEY=your_murf_api_key          # Get from https://murf.ai/api/api-keys
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key    # Get from https://www.assemblyai.com/dashboard/api-keys
+GEMINI_API_KEY=your_gemini_api_key      # Get from https://aistudio.google.com/apikey
+NEWS_API_KEY=your_news_api_key          # Get from https://newsapi.org/account
+SONAUTO_API_KEY=your_sonauto_api_key    # Get from https://sonauto.ai/developers#api-keys
 ```
+
+Alternatively, you can configure these API keys through the settings modal in the web interface.
 
 ### 5. Run the FastAPI Server
 ```sh
@@ -95,10 +101,14 @@ Go to [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
 ---
 
-## 🧠 Environment Variables
-- `MURF_API_KEY` — Your Murf API key (get from https://murf.ai)
-- `ASSEMBLYAI_API_KEY` — Your AssemblyAI API key (get from https://www.assemblyai.com)
-- `GEMINI_API_KEY` or `GOOGLE_API_KEY` — Your Google Gemini API key (get from https://aistudio.google.com/app/apikey)
+## 🧠 Required API Keys
+- `MURF_API_KEY` — For text-to-speech synthesis (get from https://murf.ai/api/api-keys)
+- `ASSEMBLYAI_API_KEY` — For speech recognition (get from https://www.assemblyai.com/dashboard/api-keys)
+- `GEMINI_API_KEY` — For AI conversations (get from https://aistudio.google.com/apikey)
+- `NEWS_API_KEY` — For news integration (get from https://newsapi.org/account)
+- `SONAUTO_API_KEY` — For AI music generation (get from https://sonauto.ai/developers#api-keys)
+
+All API keys can be configured either through environment variables or the settings modal in the web interface.
 
 ---
 
@@ -117,6 +127,24 @@ Go to [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 - **Built for hackers, by hackers**: Rapid prototyping, easy to extend
 
 ---
+
+## 🎯 Key Features in Detail
+
+### 🗣️ Voice Interaction
+The application uses AssemblyAI's real-time speech recognition to convert your voice into text, processes it through Google's Gemini AI for intelligent responses, and converts those responses back to speech using Murf.AI's natural-sounding voices.
+
+### 🎵 AI Music Generation
+Using Sonauto's advanced AI music generation capabilities, users can request custom music tracks. Simply ask for a specific type of music (e.g., "create some lofi beats" or "generate a meditation track"), and the AI will compose and stream a unique piece.
+
+### 📰 News Integration
+Stay updated with the latest news through voice commands. Ask about specific topics (e.g., "what's the latest tech news?" or "tell me about business headlines"), and the system will fetch and summarize relevant articles using NewsAPI.
+
+### 🎨 Modern Interface
+- Clean, intuitive dark-themed design
+- Real-time visual feedback for all operations
+- Easy API key management through settings modal
+- Interactive chat history with persona indicators
+- Multiple voice and persona options
 
 ## 🖼️ Screenshots
 
