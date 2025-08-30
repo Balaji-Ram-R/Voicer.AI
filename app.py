@@ -544,7 +544,7 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
                                 # Update user that generation is in progress
                                 await websocket.send_json({
                                     "type": "progress",
-                                    "message": "Creating your melody... this might take a minute",
+                                    "message": "Creating your Music... Hold on for the Surprise!",
                                     "phase": "generating"
                                 })
 
@@ -571,7 +571,7 @@ async def websocket_audio_endpoint(websocket: WebSocket, session_id: str, person
                                 ai_message = {
                                     "role": "model",
                                     "content": f"Playing a generated track for you.",
-                                    "skill": "dj",
+                                    "skill": "DJ",
                                     "track": song_url
                                 }
                                 # Add only to chat_history since conversation_history is a reference to it
