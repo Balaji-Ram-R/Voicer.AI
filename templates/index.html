@@ -901,10 +901,10 @@
       
       
       
-      // const persona = document.getElementById('personaSelect').value;
-      // ws = new WebSocket(`ws://${window.location.host}/ws/audio/${currentSessionId}?persona=${persona}`);
       const persona = document.getElementById('personaSelect').value;
-      const wsUrl = new URL(`ws://${window.location.host}/ws/audio/${currentSessionId}`);
+      // Determine WebSocket protocol based on page protocol
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = new URL(`${wsProtocol}//${window.location.host}/ws/audio/${currentSessionId}`);
       wsUrl.searchParams.set('persona', persona);
 
 
