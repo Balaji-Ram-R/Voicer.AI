@@ -466,6 +466,28 @@
     border-color: rgba(59, 130, 246, 0.4);
   }
 
+  .murf-branding {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+    z-index: 1000;
+  }
+
+  .murf-branding:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    transform: translateY(-2px);
+  }
+
   </style>
 </head>
 <body>
@@ -578,6 +600,11 @@
       </div>
     </div>
   </div>
+
+  <!-- Murf Branding -->
+  <a href="https://murf.ai/api/docs/introduction/overview" target="_blank" class="murf-branding">
+    Powered by Murf
+  </a>
 
   <!-- ALL JAVASCRIPT IS NOW IN THIS SINGLE SCRIPT TAG -->
   <script>
